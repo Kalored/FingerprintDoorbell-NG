@@ -18,6 +18,20 @@ Other changes:
 - Status web site with lots of info
 - OTA with ESPAsyncHTTPUpdateServer
 
+Changes in 0.6:
+- Home Assistant MQTT discovery (can be disabled in settings)
+- LED ring can be switched off over MQTT (`ledRing` on/off, e.g. at night), feedback while scanning is still shown
+- state of `ignoreTouchRing` and `ledRing` is published to `.../state` topics
+- fix: OTA update page was reachable without password, `/reboot` was not protected
+- fix: random DNS requests (e.g. visible in Pi-hole) caused by a dangling NTP server pointer
+- fix: timezone setting was not saved
+- fix: special characters (e.g. `%`, `"`) in passwords/names broke the settings page
+- fix: MQTT broker hostname is resolved again on every reconnect (no more lost MQTT if DNS was not ready at boot)
+- fix: MQTT login with username but empty password
+- fix: enrollment could hang forever if the finger was not lifted
+- MQTT password is masked in the settings page, settings forms use POST (no passwords in URLs)
+- web pages use the local bootstrap.min.css instead of a CDN (works without internet)
+
 Wishlist / Todo:
 - make GPIOs configurable
 - at startup if there are fingerprints saved on the sensor we don't know give them a number in the list
@@ -180,8 +194,15 @@ Matching fingerprints (and also ring events) are published as messages to your M
 | fingerprintDoorbell/matchId          | publish   | "-1" by default, if a match was found the value holds the matching id (e.g. "27") for 3s |
 | fingerprintDoorbell/matchName        | publish   | "" by default, if a match was found the value holds the matching name for 3s |
 | fingerprintDoorbell/matchConfidence  | publish   | "" by default, if a match was found the value holds the conficence (number between "1" and "400", 1=low, 400=very high) for 3s |
-| fingerprintDoorbell/openDoor              | subscribe   | open the door with GPIO 23 |
-| fingerprintDoorbell/ignoreTouchRing  | subscribe | read by FingerprintDoorbell and enables/disables the touch ring (see FAQ below for details) |
+| fingerprintDoorbell/lastLogMessage   | publish   | last message of the log panel |
+| fingerprintDoorbell/ignoreTouchRing/state | publish (retained) | current state of ignoreTouchRing, "on" or "off" |
+| fingerprintDoorbell/ledRing/state    | publish (retained) | current state of the LED ring, "on" or "off" |
+| fingerprintDoorbell/openDoor         | subscribe | "true" opens the door with GPIO 23 |
+| fingerprintDoorbell/ignoreTouchRing  | subscribe | "on"/"off", enables/disables the touch ring (see FAQ below for details) |
+| fingerprintDoorbell/ledRing          | subscribe | "on"/"off", switches the LED ring in idle state on/off (e.g. at night). Feedback while scanning/matching is still shown |
+
+### Home Assistant
+If "Enable MQTT discovery" is checked in the settings (default), FingerprintDoorbell publishes discovery configs under `homeassistant/...` and shows up as a device in Home Assistant with these entities: Ring, Match ID, Match name, Match confidence, Last log message, Ignore touch ring (switch), LED ring (switch) and Open door (button). Unchecking the option removes the entities again.
 
 ## Advanced Actions
 ### Firmware Update  <-- not working

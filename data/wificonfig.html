@@ -22,7 +22,7 @@
 	After saving the new WiFi configuration the device will restart and try to connect to your network.	If this fails the device will not go back to WiFi config mode automatically. You have to put the device manually in WiFi config mode by press and hold the sensor surface for 10 s while powering up the device.
 	</div>
 	
-	<form class="form-horizontal" action="/save">
+	<form class="form-horizontal" action="/save" method="post">
 	<fieldset>
 
 	<!-- Form Name -->
@@ -40,7 +40,7 @@
 	<div class="form-group">
 		<label class="col-md-4 control-label" for="password">WiFi Password</label>  
 		<div class="col-md-8">
-		<input id="password" name="password" type="text" placeholder="Password of your WiFi network" class="form-control input-md" value="%WIFI_PASSWORD%" required>
+		<input id="password" name="password" type="password" placeholder="Password of your WiFi network" class="form-control input-md" value="%WIFI_PASSWORD%" required>
 		<small class="text-muted">For security reason the current password is not displayed here, but you can set a new one.</small>
 		</div>
 	</div>

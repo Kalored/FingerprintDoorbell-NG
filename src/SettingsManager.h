@@ -18,6 +18,7 @@ struct AppSettings
   String mqttUsername = "";
   String mqttPassword = "";
   String mqttRootTopic = "fingerprintDoorbell";
+  bool haDiscovery = true;
   String ntpServer = "pool.ntp.org";
   String timezone = "CET-1CEST,M3.5.0,M10.5.0/3";
   String sensorPin = "00000000";

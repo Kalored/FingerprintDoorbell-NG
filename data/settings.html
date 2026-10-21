@@ -6,8 +6,7 @@
 	<title>FingerprintDoorbell</title>
 	<meta name="viewport" content="width=device-width, initial-scale=1" charset="utf-8">
 	<link rel="icon" href="data:,">
-	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css"
-		integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+	<link rel="stylesheet" type="text/css" href="bootstrap.min.css">
 	<style>
 		.alert-custom {
 			background-color: #cecece;
@@ -60,7 +59,7 @@
 
 	<div class="alert alert-custom" id="logMessages" role="alert">%LOGMESSAGES%</div>
 
-	<form class="form-horizontal" action="/settings">
+	<form class="form-horizontal" action="/settings" method="post">
 		<fieldset>
 
 			<!-- Form Name -->
@@ -70,7 +69,7 @@
 			<div class="form-group">
 				<label class="col-md-4 control-label" for="web_password">Web Password</label>
 				<div class="col-md-4">
-					<input id="web_password" name="web_password" type="text"
+					<input id="web_password" name="web_password" type="password" autocomplete="new-password"
 						placeholder="Password for website" class="form-control input-md" value="%WEB_PASSWORD%">
 						<small class="text-muted">User name is "admin", leave empty if no authentication required</small>
 					</div>
@@ -97,7 +96,7 @@
 			<div class="form-group">
 				<label class="col-md-4 control-label" for="mqtt_password">MQTT Password</label>
 				<div class="col-md-4">
-					<input id="mqtt_password" name="mqtt_password" type="text"
+					<input id="mqtt_password" name="mqtt_password" type="password" autocomplete="new-password"
 						placeholder="Password for connecting to your MQTT Broker" class="form-control input-md"
 						value="%MQTT_PASSWORD%">
 					<small class="text-muted">Leave empty if your broker is not requiring authentication.</small>
@@ -117,10 +116,27 @@
 						- "%MQTT_ROOTTOPIC%/matchName"<br>
 						- "%MQTT_ROOTTOPIC%/matchConfidence"<br>
 						- "%MQTT_ROOTTOPIC%/lastLogMessage"<br>
+						- "%MQTT_ROOTTOPIC%/ignoreTouchRing/state"<br>
+						- "%MQTT_ROOTTOPIC%/ledRing/state"<br>
 						<u>Subscribed Topics (=read)</u><br>
 						- "%MQTT_ROOTTOPIC%/ignoreTouchRing: on/off"<br>
+						- "%MQTT_ROOTTOPIC%/ledRing: on/off"<br>
 						- "%MQTT_ROOTTOPIC%/openDoor: true"
 					</small>
+				</div>
+			</div>
+
+			<div class="form-group">
+				<label class="col-md-4 control-label" for="ha_discovery">Home Assistant</label>
+				<div class="col-md-4">
+					<div class="checkbox">
+						<label>
+							<input type="checkbox" id="ha_discovery" name="ha_discovery" value="on" %HA_DISCOVERY%>
+							Enable MQTT discovery
+						</label>
+					</div>
+					<small class="text-muted">Publishes discovery configs under "homeassistant/...", so the doorbell
+						shows up as a device in Home Assistant automatically.</small>
 				</div>
 			</div>
 

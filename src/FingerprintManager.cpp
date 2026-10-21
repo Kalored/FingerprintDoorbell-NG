@@ -289,12 +289,24 @@ NewFinger FingerprintManager::enrollFinger(int id, String name)
 
     if (nTimes != 1) // not on first run
     {
-      // delay(2000);
+      // wait until the finger was lifted from the sensor
       newFinger.returnCode = 0xFF;
       while (newFinger.returnCode != FINGERPRINT_NOFINGER)
       {
         newFinger.returnCode = finger.getImage();
+        if (newFinger.returnCode != FINGERPRINT_NOFINGER)
+        {
+          delay(100);
+          timeout++;
+          if (timeout > maxTimeout * 10)
+          {
+            Serial.println("finger not lifted, timeout!");
+            notifyClients("Enrollment timeout: finger was not lifted from the sensor.");
+            return newFinger;
+          }
+        }
       }
+      timeout = 0;
     }
 
     Serial.print("Taking image sample ");
@@ -316,6 +328,7 @@ NewFinger FingerprintManager::enrollFinger(int id, String name)
         if (timeout > maxTimeout*10)
         {
           Serial.println("no finger, timeout!");
+          notifyClients("Enrollment timeout: no finger was placed on the sensor.");
           return newFinger;
         }
         break;
@@ -470,9 +483,9 @@ String FingerprintManager::getFingerListAsHtmlOptionList()
     {
       String option;
       if (counter == 0)
-        option = "<option value=\"" + String(i) + "\" selected>" + String(i) + " - " + fingerList[i] + "</option>";
+        option = "<option value=\"" + String(i) + "\" selected>" + String(i) + " - " + htmlEscape(fingerList[i]) + "</option>";
       else
-        option = "<option value=\"" + String(i) + "\">" + String(i) + " - " + fingerList[i] + "</option>";
+        option = "<option value=\"" + String(i) + "\">" + String(i) + " - " + htmlEscape(fingerList[i]) + "</option>";
       htmlOptions += option;
       counter++;
     }
@@ -490,6 +503,30 @@ void FingerprintManager::setIgnoreTouchRing(bool state)
     else
       notifyClients("IgnoreTouchRing is now 'off'");
   }
+}
+
+bool FingerprintManager::getIgnoreTouchRing()
+{
+  return ignoreTouchRing;
+}
+
+void FingerprintManager::setLedRingEnabled(bool state)
+{
+  if (ledRingEnabled != state)
+  {
+    ledRingEnabled = state;
+    if (state == true)
+      notifyClients("LED ring is now 'on'");
+    else
+      notifyClients("LED ring is now 'off'");
+    if (connected && !lastTouchState)
+      setLedRingReady();
+  }
+}
+
+bool FingerprintManager::getLedRingEnabled()
+{
+  return ledRingEnabled;
 }
 
 bool FingerprintManager::isRingTouched()
@@ -526,7 +563,9 @@ void FingerprintManager::setLedRingWifiConfig()
 
 void FingerprintManager::setLedRingReady()
 {
-  if (!ignoreTouchRing)
+  if (!ledRingEnabled)
+    finger.LEDcontrol(FINGERPRINT_LED_OFF, 0, touchRingActiveColor);
+  else if (!ignoreTouchRing)
     finger.LEDcontrol(touchRingActiveSequence, 250, touchRingActiveColor);
   else
     finger.LEDcontrol(FINGERPRINT_LED_ON, 0, FINGERPRINT_LED_BLUE); // just an indicator for me to see if touch ring is active or not

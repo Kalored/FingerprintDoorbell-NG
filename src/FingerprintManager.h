@@ -53,6 +53,7 @@ private:
   int fingerCountOnSensor = 0;
   bool ignoreTouchRing = false; // set to true when the sensor is usually exposed to rain to avoid false ring events. Can also be set conditional by a rain sensor over MQTT
   bool lastIgnoreTouchRing = false;
+  bool ledRingEnabled = true; // can be switched off by MQTT (e.g. at night), feedback while scanning/enrolling is still shown
 
   void updateTouchState(bool touched);
   bool isRingTouched();
@@ -75,6 +76,9 @@ public:
   void renameFinger(int id, String newName);
   String getFingerListAsHtmlOptionList();
   void setIgnoreTouchRing(bool state);
+  bool getIgnoreTouchRing();
+  void setLedRingEnabled(bool state);
+  bool getLedRingEnabled();
   bool isFingerOnSensor();
   void setLedRingError();
   void setLedRingWifiConfig();

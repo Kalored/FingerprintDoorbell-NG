@@ -21,7 +21,7 @@ enum class Mode
   maintenance
 };
 
-const char *VersionInfo = "0.5";
+const char *VersionInfo = "0.6";
 
 // ===================================================================================================================
 // Caution: below are not the credentials for connecting to your home network, they are for the Access Point mode!!!
@@ -77,8 +77,12 @@ const char *webServerUser = "admin"; // User name for authentication
 #define MQTT_LWT_PAYLOAD_ONLINE "Online"
 #define MQTT_LWT_PAYLOAD_OFFLINE "Offline"
 
+#define HA_DISCOVERY_PREFIX "homeassistant"
+
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
+String mqttHostname;
+u16_t mqttPort = 1883;
 long lastMsg = 0;
 char msg[50];
 int value = 0;
@@ -129,10 +133,51 @@ String getUptimeString()
   secs-=mins*60;
   mins-=hours*60;
   hours-=days*24;
-  char buffer[25];
-  snprintf(buffer, sizeof(buffer), "Uptime %d days %2.2d:%2.2d:%2.2d", (byte)days, (byte)hours, (byte)mins, (byte)secs);
+  char buffer[32];
+  snprintf(buffer, sizeof(buffer), "Uptime %u days %2.2u:%2.2lu:%2.2lu", days, hours, mins, secs);
   String uptime = String(buffer);
   return uptime;
+}
+
+// Escapes user defined strings before they are inserted into HTML (attribute values or text)
+String htmlEscape(const String &text)
+{
+  String escaped;
+  escaped.reserve(text.length() + 16);
+  for (unsigned int i = 0; i < text.length(); i++)
+  {
+    char c = text.charAt(i);
+    switch (c)
+    {
+    case '&': escaped += "&amp;"; break;
+    case '<': escaped += "&lt;"; break;
+    case '>': escaped += "&gt;"; break;
+    case '"': escaped += "&quot;"; break;
+    case '\'': escaped += "&#39;"; break;
+    case '%': escaped += "&#37;"; break; // '%' is the placeholder char of the template processor
+    default: escaped += c;
+    }
+  }
+  return escaped;
+}
+
+// Escapes strings before they are inserted into JSON payloads
+String jsonEscape(const String &text)
+{
+  String escaped;
+  escaped.reserve(text.length() + 8);
+  for (unsigned int i = 0; i < text.length(); i++)
+  {
+    char c = text.charAt(i);
+    if (c == '"' || c == '\\')
+    {
+      escaped += '\\';
+      escaped += c;
+    }
+    else if ((uint8_t)c >= 0x20)
+      escaped += c;
+  }
+  return escaped;
 }
 
 String splitIpAndPort(String mqttServerConfigString, u16_t &mqttPort)
@@ -184,7 +229,7 @@ String processor(const String &var)
   }
   else if (var == "HOSTNAME")
   {
-    return settingsManager.getWifiSettings().hostname;
+    return htmlEscape(settingsManager.getWifiSettings().hostname);
   }
   else if (var == "VERSIONINFO")
   {
@@ -200,7 +245,7 @@ String processor(const String &var)
   }
   else if (var == "SSID")
   {
-    return WiFi.SSID();
+    return htmlEscape(WiFi.SSID());
   }
   else if (var == "BSSID")
   {
@@ -290,7 +335,7 @@ String processor(const String &var)
   }
   else if (var == "WIFI_SSID")
   {
-    return settingsManager.getWifiSettings().ssid;
+    return htmlEscape(settingsManager.getWifiSettings().ssid);
   }
   else if (var == "WIFI_PASSWORD")
   {
@@ -308,27 +353,34 @@ String processor(const String &var)
   }
   else if (var == "MQTT_SERVER")
   {
-    return settingsManager.getAppSettings().mqttServer;
+    return htmlEscape(settingsManager.getAppSettings().mqttServer);
   }
   else if (var == "MQTT_USERNAME")
   {
-    return settingsManager.getAppSettings().mqttUsername;
+    return htmlEscape(settingsManager.getAppSettings().mqttUsername);
   }
   else if (var == "MQTT_PASSWORD")
   {
-    return settingsManager.getAppSettings().mqttPassword;
+    if (settingsManager.getAppSettings().mqttPassword.isEmpty())
+      return "";
+    else
+      return "********"; // for security reasons the mqtt password will not left the device once configured
   }
   else if (var == "MQTT_ROOTTOPIC")
   {
-    return settingsManager.getAppSettings().mqttRootTopic;
+    return htmlEscape(settingsManager.getAppSettings().mqttRootTopic);
+  }
+  else if (var == "HA_DISCOVERY")
+  {
+    return settingsManager.getAppSettings().haDiscovery ? Checked : "";
   }
   else if (var == "NTP_SERVER")
   {
-    return settingsManager.getAppSettings().ntpServer;
+    return htmlEscape(settingsManager.getAppSettings().ntpServer);
   }
   else if (var == "TIMEZONE")
   {
-    return settingsManager.getAppSettings().timezone;
+    return htmlEscape(settingsManager.getAppSettings().timezone);
   }
   else if (var == "TOUCH_RING_ACTIVE_COLOR_1")
   {
@@ -560,7 +612,12 @@ void startWebserver()
   }
 
   // Init time by NTP Client
-  configTime(gmtOffset_sec, daylightOffset_sec, settingsManager.getAppSettings().ntpServer.c_str());
+  // SNTP only stores the pointer to the server name, so it must not point into a temporary copy of the settings
+  // (otherwise random memory content is resolved as hostname every few seconds)
+  static String ntpServer;
+  ntpServer = settingsManager.getAppSettings().ntpServer;
+  if (!ntpServer.isEmpty())
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer.c_str());
   Serial.printf("Setting Timezone to %s\n", settingsManager.getAppSettings().timezone.c_str());
   setenv("TZ", settingsManager.getAppSettings().timezone.c_str(), 1);  //  Now adjust the TZ.  Clock settings are adjusted to show the new local time
   tzset();
@@ -575,7 +632,7 @@ void startWebserver()
     webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
                  { request->send(SPIFFS, "/wificonfig.html", String(), false, processor); });
 
-    webServer.on("/save", HTTP_GET, [](AsyncWebServerRequest *request)
+    webServer.on("/save", HTTP_GET | HTTP_POST, [](AsyncWebServerRequest *request)
                  {
       if(request->hasArg("hostname"))
       {
@@ -665,7 +722,7 @@ void startWebserver()
       }
       request->redirect("/"); });
 
-    webServer.on("/settings", HTTP_GET, [](AsyncWebServerRequest *request)
+    webServer.on("/settings", HTTP_GET | HTTP_POST, [](AsyncWebServerRequest *request)
                  {
       if (!settingsManager.getAppSettings().webPassword.isEmpty())
       {
@@ -683,9 +740,14 @@ void startWebserver()
           settings.webPassword = request->arg("web_password");
         settings.mqttServer = request->arg("mqtt_server");
         settings.mqttUsername = request->arg("mqtt_username");
-        settings.mqttPassword = request->arg("mqtt_password");
+        if (request->arg("mqtt_password").equals("********")) // password is replaced by wildcards when given to the browser, so if the user didn't changed it, don't save it
+          settings.mqttPassword = settingsManager.getAppSettings().mqttPassword; // use the old, already saved, one
+        else
+          settings.mqttPassword = request->arg("mqtt_password");
         settings.mqttRootTopic = request->arg("mqtt_rootTopic");
+        settings.haDiscovery = request->hasArg("ha_discovery");
         settings.ntpServer = request->arg("ntpServer");
+        settings.timezone = request->arg("timezone");
         settings.touchRingActiveColor = request->arg("touchRingActiveColor").toInt();
         settings.touchRingActiveSequence = request->arg("touchRingActiveSequence").toInt();
         settings.scanColor = request->arg("scanColor").toInt();
@@ -784,23 +846,99 @@ void startWebserver()
   // common url callbacks
   webServer.on("/reboot", HTTP_GET, [](AsyncWebServerRequest *request)
                {
+    if (currentMode != Mode::wificonfig && !settingsManager.getAppSettings().webPassword.isEmpty())
+    {
+      if(!request->authenticate(webServerUser, settingsManager.getAppSettings().webPassword.c_str()))
+        return request->requestAuthentication();
+    }
     request->redirect("/");
     shouldReboot = true; });
 
   webServer.on("/bootstrap.min.css", HTTP_GET, [](AsyncWebServerRequest *request)
                { request->send(SPIFFS, "/bootstrap.min.css", "text/css"); });
 
-
-
-  // Start server
-  updateServer.setup(&webServer);
-  webServer.begin();
-  if (settingsManager.getAppSettings().webPassword.isEmpty())
+  // OTA update handler, must be registered only once (a second unauthenticated registration would win over the authenticated one)
+  if (currentMode == Mode::wificonfig || settingsManager.getAppSettings().webPassword.isEmpty())
     updateServer.setup(&webServer, "/update");
   else
     updateServer.setup(&webServer, "/update", webServerUser, settingsManager.getAppSettings().webPassword.c_str());
 
+  // Start server
+  webServer.begin();
+
   notifyClients("System booted successfully!");
+}
+
+// publish the current state of all switchable options (retained, so the state is also known after a restart of the home automation)
+void publishSwitchStates()
+{
+  String mqttRootTopic = settingsManager.getAppSettings().mqttRootTopic;
+  mqttClient.publish((mqttRootTopic + "/ignoreTouchRing/state").c_str(), fingerManager.getIgnoreTouchRing() ? "on" : "off", true);
+  mqttClient.publish((mqttRootTopic + "/ledRing/state").c_str(), fingerManager.getLedRingEnabled() ? "on" : "off", true);
+}
+
+// publish (or remove) one Home Assistant discovery config
+void publishHaDiscoveryEntity(const String &component, const String &objectId, const String &nodeId, const String &specificConfig, const String &deviceConfig, bool enabled)
+{
+  String topic = String(HA_DISCOVERY_PREFIX) + "/" + component + "/" + nodeId + "/" + objectId + "/config";
+  if (!enabled)
+  {
+    mqttClient.publish(topic.c_str(), "", true); // an empty retained message removes the entity from Home Assistant
+    return;
+  }
+
+  String mqttRootTopic = jsonEscape(settingsManager.getAppSettings().mqttRootTopic);
+  String payload = "{" + specificConfig +
+                   ",\"unique_id\":\"" + nodeId + "_" + objectId + "\"" +
+                   ",\"availability_topic\":\"" + mqttRootTopic + "/" + MQTT_LWT_TOPIC + "\"" +
+                   ",\"payload_available\":\"" + MQTT_LWT_PAYLOAD_ONLINE + "\"" +
+                   ",\"payload_not_available\":\"" + MQTT_LWT_PAYLOAD_OFFLINE + "\"" +
+                   "," + deviceConfig + "}";
+  if (!mqttClient.publish(topic.c_str(), payload.c_str(), true))
+    Serial.println("Failed to publish HA discovery config for " + objectId);
+}
+
+// Home Assistant MQTT discovery, see https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery
+void publishHaDiscovery()
+{
+  bool enabled = settingsManager.getAppSettings().haDiscovery;
+  String mac = WiFi.macAddress();
+  mac.replace(":", "");
+  mac.toLowerCase();
+  String nodeId = "fpdoorbell_" + mac;
+  String t = jsonEscape(settingsManager.getAppSettings().mqttRootTopic) + "/";
+
+  String device = String("\"device\":{\"identifiers\":[\"") + nodeId + "\"]" +
+                  ",\"name\":\"" + jsonEscape(settingsManager.getWifiSettings().hostname) + "\"" +
+                  ",\"manufacturer\":\"FingerprintDoorbell\"" +
+                  ",\"model\":\"ESP32 + R503\"" +
+                  ",\"sw_version\":\"" + VersionInfo + "\"" +
+                  ",\"configuration_url\":\"http://" + WiFi.localIP().toString() + "\"}";
+
+  publishHaDiscoveryEntity("binary_sensor", "ring", nodeId,
+                           "\"name\":\"Ring\",\"icon\":\"mdi:doorbell\",\"state_topic\":\"" + t + "ring\",\"payload_on\":\"on\",\"payload_off\":\"off\"",
+                           device, enabled);
+  publishHaDiscoveryEntity("sensor", "match_id", nodeId,
+                           "\"name\":\"Match ID\",\"icon\":\"mdi:fingerprint\",\"state_topic\":\"" + t + "matchId\"",
+                           device, enabled);
+  publishHaDiscoveryEntity("sensor", "match_name", nodeId,
+                           "\"name\":\"Match name\",\"icon\":\"mdi:account\",\"state_topic\":\"" + t + "matchName\"",
+                           device, enabled);
+  publishHaDiscoveryEntity("sensor", "match_confidence", nodeId,
+                           "\"name\":\"Match confidence\",\"icon\":\"mdi:percent\",\"state_topic\":\"" + t + "matchConfidence\"",
+                           device, enabled);
+  publishHaDiscoveryEntity("sensor", "last_log_message", nodeId,
+                           "\"name\":\"Last log message\",\"icon\":\"mdi:text\",\"entity_category\":\"diagnostic\",\"state_topic\":\"" + t + "lastLogMessage\"",
+                           device, enabled);
+  publishHaDiscoveryEntity("switch", "ignore_touch_ring", nodeId,
+                           "\"name\":\"Ignore touch ring\",\"icon\":\"mdi:weather-pouring\",\"entity_category\":\"config\",\"command_topic\":\"" + t + "ignoreTouchRing\",\"state_topic\":\"" + t + "ignoreTouchRing/state\",\"payload_on\":\"on\",\"payload_off\":\"off\",\"retain\":true",
+                           device, enabled);
+  publishHaDiscoveryEntity("switch", "led_ring", nodeId,
+                           "\"name\":\"LED ring\",\"icon\":\"mdi:led-on\",\"entity_category\":\"config\",\"command_topic\":\"" + t + "ledRing\",\"state_topic\":\"" + t + "ledRing/state\",\"payload_on\":\"on\",\"payload_off\":\"off\",\"retain\":true",
+                           device, enabled);
+  publishHaDiscoveryEntity("button", "open_door", nodeId,
+                           "\"name\":\"Open door\",\"icon\":\"mdi:door-open\",\"command_topic\":\"" + t + "openDoor\",\"payload_press\":\"true\"",
+                           device, enabled);
 }
 
 void mqttCallback(char *topic, byte *message, unsigned int length)
@@ -828,6 +966,20 @@ void mqttCallback(char *topic, byte *message, unsigned int length)
     {
       fingerManager.setIgnoreTouchRing(false);
     }
+    publishSwitchStates();
+  }
+
+  if (String(topic) == String(settingsManager.getAppSettings().mqttRootTopic) + "/ledRing")
+  {
+    if (messageTemp == "on")
+    {
+      fingerManager.setLedRingEnabled(true);
+    }
+    else if (messageTemp == "off")
+    {
+      fingerManager.setLedRingEnabled(false);
+    }
+    publishSwitchStates();
   }
 
   if (String(topic) == String(settingsManager.getAppSettings().mqttRootTopic) + "/openDoor")
@@ -875,9 +1027,9 @@ void connectMqttClient()
     // Attempt to connect
     bool connectResult;
 
-    // connect with or witout authentication
+    // connect with or witout authentication (an empty password is allowed if a username is given)
     String lastWillTopic = settingsManager.getAppSettings().mqttRootTopic + "/" + MQTT_LWT_TOPIC;
-    if (settingsManager.getAppSettings().mqttUsername.isEmpty() || settingsManager.getAppSettings().mqttPassword.isEmpty())
+    if (settingsManager.getAppSettings().mqttUsername.isEmpty())
       connectResult = mqttClient.connect(settingsManager.getWifiSettings().hostname.c_str(), lastWillTopic.c_str(), MQTT_LWT_QOS, MQTT_LWT_RETAIN, MQTT_LWT_PAYLOAD_OFFLINE);
     else
       connectResult = mqttClient.connect(settingsManager.getWifiSettings().hostname.c_str(), settingsManager.getAppSettings().mqttUsername.c_str(), settingsManager.getAppSettings().mqttPassword.c_str(), lastWillTopic.c_str(), MQTT_LWT_QOS, MQTT_LWT_RETAIN, MQTT_LWT_PAYLOAD_OFFLINE);
@@ -891,10 +1043,13 @@ void connectMqttClient()
       // Subscribe
       mqttClient.subscribe((settingsManager.getAppSettings().mqttRootTopic + "/ignoreTouchRing").c_str(), 1); // QoS = 1 (at least once)
       mqttClient.subscribe((settingsManager.getAppSettings().mqttRootTopic + "/openDoor").c_str(), 1); // QoS = 1 (at least once)
+      mqttClient.subscribe((settingsManager.getAppSettings().mqttRootTopic + "/ledRing").c_str(), 1); // QoS = 1 (at least once)
 #ifdef CUSTOM_GPIOS
       mqttClient.subscribe((settingsManager.getAppSettings().mqttRootTopic + "/customOutput1").c_str(), 1); // QoS = 1 (at least once)
       mqttClient.subscribe((settingsManager.getAppSettings().mqttRootTopic + "/customOutput2").c_str(), 1); // QoS = 1 (at least once)
 #endif
+      publishSwitchStates();
+      publishHaDiscovery();
     }
     else
     {
@@ -938,7 +1093,8 @@ void doScan()
         if (match.matchName.endsWith("#"))
           opendoor = true;
         if (opendoor)
-          digitalWrite(dooropenerOutputPin, HIGH);        mqttClient.publish((String(mqttRootTopic) + "/ring").c_str(), "off");
+          digitalWrite(dooropenerOutputPin, HIGH);
+        mqttClient.publish((String(mqttRootTopic) + "/ring").c_str(), "off");
         mqttClient.publish((String(mqttRootTopic) + "/matchId").c_str(), String(match.matchId).c_str());
         mqttClient.publish((String(mqttRootTopic) + "/matchName").c_str(), match.matchName.c_str());
         mqttClient.publish((String(mqttRootTopic) + "/matchConfidence").c_str(), String(match.matchConfidence).c_str());
@@ -1066,25 +1222,16 @@ void setup()
       }
       else
       {
-        delay(5000);
-
-        u16_t mqttPort;
-        String mqttHostname = splitIpAndPort(settingsManager.getAppSettings().mqttServer, mqttPort);
-
-        IPAddress mqttServerIp;
-        if (WiFi.hostByName(mqttHostname.c_str(), mqttServerIp))
-        {
-          mqttConfigValid = true;
-          Serial.println("IP used for MQTT server: " + mqttServerIp.toString() + ":" + mqttPort);
-          mqttClient.setServer(mqttServerIp, mqttPort);
-          mqttClient.setCallback(mqttCallback);
-          connectMqttClient();
-        }
-        else
-        {
-          mqttConfigValid = false;
-          notifyClients("MQTT Server '" + settingsManager.getAppSettings().mqttServer + "' not found. Please check your settings.");
-        }
+        // PubSubClient only stores the pointer to the hostname, so it has to be kept in a global variable.
+        // Using the hostname (instead of a once resolved IP) lets the client resolve it again on every reconnect.
+        mqttHostname = splitIpAndPort(settingsManager.getAppSettings().mqttServer, mqttPort);
+        mqttConfigValid = true;
+        Serial.println("MQTT server: " + mqttHostname + ":" + mqttPort);
+        mqttClient.setServer(mqttHostname.c_str(), mqttPort);
+        mqttClient.setBufferSize(1536); // needed for Home Assistant discovery payloads
+        mqttClient.setCallback(mqttCallback);
+        connectMqttClient();
+        mqttReconnectPreviousMillis = millis();
       }
       if (fingerManager.connected)
       {

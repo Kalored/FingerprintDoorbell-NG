@@ -28,6 +28,7 @@ bool SettingsManager::loadAppSettings()
         appSettings.mqttUsername = preferences.getString("mqttUsername", String(""));
         appSettings.mqttPassword = preferences.getString("mqttPassword", String(""));
         appSettings.mqttRootTopic = preferences.getString("mqttRootTopic", String("fingerprintDoorbell"));
+        appSettings.haDiscovery = preferences.getBool("haDiscovery", true);
         appSettings.ntpServer = preferences.getString("ntpServer", String("pool.ntp.org"));
         appSettings.timezone = preferences.getString("timezone", String("CET-1CEST,M3.5.0,M10.5.0/3"));
         appSettings.sensorPin = preferences.getString("sensorPin", "00000000");
@@ -65,6 +66,7 @@ void SettingsManager::saveAppSettings()
     preferences.putString("mqttUsername", appSettings.mqttUsername);
     preferences.putString("mqttPassword", appSettings.mqttPassword);
     preferences.putString("mqttRootTopic", appSettings.mqttRootTopic);
+    preferences.putBool("haDiscovery", appSettings.haDiscovery);
     preferences.putString("ntpServer", appSettings.ntpServer);
     preferences.putString("timezone", appSettings.timezone);
     preferences.putString("sensorPin", appSettings.sensorPin);
