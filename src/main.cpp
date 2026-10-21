@@ -88,6 +88,13 @@ char msg[50];
 int value = 0;
 bool mqttConfigValid = true;
 
+// connection statistics for diagnosis (shown on system page)
+bool mqttWasConnected = false;
+bool wifiWasConnected = false;
+unsigned long mqttConnectCount = 0;
+unsigned long mqttLostCount = 0;
+unsigned long wifiLostCount = 0;
+
 Match lastMatch;
 
 void addLogMessage(const String &message)
@@ -216,6 +223,24 @@ bool waitForMaintenanceMode()
   return true;
 }
 
+String getMqttStateString(int state)
+{
+  switch (state)
+  {
+  case MQTT_CONNECTION_TIMEOUT: return "connection timeout (no answer to keepalive ping)";
+  case MQTT_CONNECTION_LOST: return "connection lost (TCP connection closed)";
+  case MQTT_CONNECT_FAILED: return "connect failed (broker not reachable)";
+  case MQTT_DISCONNECTED: return "disconnected";
+  case MQTT_CONNECTED: return "connected";
+  case MQTT_CONNECT_BAD_PROTOCOL: return "bad protocol";
+  case MQTT_CONNECT_BAD_CLIENT_ID: return "bad client id";
+  case MQTT_CONNECT_UNAVAILABLE: return "server unavailable";
+  case MQTT_CONNECT_BAD_CREDENTIALS: return "bad credentials";
+  case MQTT_CONNECT_UNAUTHORIZED: return "unauthorized";
+  default: return String("unknown (") + state + ")";
+  }
+}
+
 // Replaces placeholder in HTML pages
 String processor(const String &var)
 {
@@ -328,6 +353,18 @@ String processor(const String &var)
       case ESP_RST_SDIO:
           return String("SDIO");
     }
+  }
+  else if (var == "MQTT_STATE")
+  {
+    return getMqttStateString(mqttClient.state());
+  }
+  else if (var == "MQTT_STATS")
+  {
+    return String(mqttConnectCount) + " connects, " + mqttLostCount + " lost";
+  }
+  else if (var == "WIFI_LOST")
+  {
+    return String(wifiLostCount);
   }
   else if (var == "UPTIME")
   {
@@ -943,8 +980,10 @@ void publishHaDiscovery()
 
 void mqttCallback(char *topic, byte *message, unsigned int length)
 {
+  // copy the topic, because PubSubClient reuses the buffer behind 'topic' when publishing inside this callback
+  String topicStr = String(topic);
   Serial.print("Message arrived on topic: ");
-  Serial.print(topic);
+  Serial.print(topicStr);
   Serial.print(". Message: ");
   String messageTemp;
 
@@ -956,7 +995,7 @@ void mqttCallback(char *topic, byte *message, unsigned int length)
   Serial.println();
 
   // Check incomming message for interesting topics
-  if (String(topic) == String(settingsManager.getAppSettings().mqttRootTopic) + "/ignoreTouchRing")
+  if (topicStr == String(settingsManager.getAppSettings().mqttRootTopic) + "/ignoreTouchRing")
   {
     if (messageTemp == "on")
     {
@@ -969,7 +1008,7 @@ void mqttCallback(char *topic, byte *message, unsigned int length)
     publishSwitchStates();
   }
 
-  if (String(topic) == String(settingsManager.getAppSettings().mqttRootTopic) + "/ledRing")
+  if (topicStr == String(settingsManager.getAppSettings().mqttRootTopic) + "/ledRing")
   {
     if (messageTemp == "on")
     {
@@ -982,7 +1021,7 @@ void mqttCallback(char *topic, byte *message, unsigned int length)
     publishSwitchStates();
   }
 
-  if (String(topic) == String(settingsManager.getAppSettings().mqttRootTopic) + "/openDoor")
+  if (topicStr == String(settingsManager.getAppSettings().mqttRootTopic) + "/openDoor")
   {
     if (messageTemp == "true")
     {
@@ -994,7 +1033,7 @@ void mqttCallback(char *topic, byte *message, unsigned int length)
   }
 
 #ifdef CUSTOM_GPIOS
-  if (String(topic) == String(settingsManager.getAppSettings().mqttRootTopic) + "/customOutput1")
+  if (topicStr == String(settingsManager.getAppSettings().mqttRootTopic) + "/customOutput1")
   {
     if (messageTemp == "on")
     {
@@ -1005,7 +1044,7 @@ void mqttCallback(char *topic, byte *message, unsigned int length)
       digitalWrite(customOutput1, LOW);
     }
   }
-  if (String(topic) == String(settingsManager.getAppSettings().mqttRootTopic) + "/customOutput2")
+  if (topicStr == String(settingsManager.getAppSettings().mqttRootTopic) + "/customOutput2")
   {
     if (messageTemp == "on")
     {
@@ -1038,6 +1077,8 @@ void connectMqttClient()
     {
       // success
       Serial.println("connected");
+      mqttConnectCount++;
+      mqttWasConnected = true;
       // LWT publish
       mqttClient.publish((settingsManager.getAppSettings().mqttRootTopic + "/" + MQTT_LWT_TOPIC).c_str(), MQTT_LWT_PAYLOAD_ONLINE, MQTT_LWT_RETAIN);
       // Subscribe
@@ -1261,6 +1302,27 @@ void loop()
   if (currentMode != Mode::wificonfig)
   {
     unsigned long currentMillis = millis();
+
+    // detect connection losses and log the reason (helps to find the cause of frequent reconnects)
+    bool wifiConnected = (WiFi.status() == WL_CONNECTED);
+    if (wifiWasConnected && !wifiConnected)
+    {
+      wifiLostCount++;
+      notifyClients("WiFi connection lost (status " + String(WiFi.status()) + ")");
+    }
+    else if (!wifiWasConnected && wifiConnected && wifiLostCount > 0)
+    {
+      notifyClients("WiFi reconnected, RSSI " + String(WiFi.RSSI()) + " dBm");
+    }
+    wifiWasConnected = wifiConnected;
+
+    if (mqttWasConnected && !mqttClient.connected())
+    {
+      mqttLostCount++;
+      mqttWasConnected = false;
+      notifyClients("MQTT connection lost: " + getMqttStateString(mqttClient.state()) + ", WiFi RSSI " + String(WiFi.RSSI()) + " dBm");
+    }
+
     // reconnect WiFi if down for 30s
     if ((WiFi.status() != WL_CONNECTED) && (currentMillis - wifiReconnectPreviousMillis >= 30000ul))
     {
