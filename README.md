@@ -25,13 +25,14 @@ Changes in 0.6:
 - fix: OTA update page was reachable without password, `/reboot` was not protected
 - fix: random DNS requests (e.g. visible in Pi-hole) caused by a dangling NTP server pointer
 - fix: timezone setting was not saved
+- timezone selectable from a list (e.g. "Europe/Berlin"), invalid values fall back to CET/CEST instead of silently using UTC (time was off by 1-2 hours), current device time shown in settings
 - fix: special characters (e.g. `%`, `"`) in passwords/names broke the settings page
 - fix: MQTT broker hostname is resolved again on every reconnect (no more lost MQTT if DNS was not ready at boot)
 - fix: MQTT login with username but empty password
 - fix: enrollment could hang forever if the finger was not lifted
 - MQTT password is masked in the settings page, settings forms use POST (no passwords in URLs)
 - web pages use the local bootstrap.min.css instead of a CDN (works without internet)
-- all MQTT topics configurable in the web UI ("MQTT topics & options"), plus port, client id, keepalive, on/off payloads (e.g. true/false for ioBroker), retain flag and log publishing
+- separate "MQTT" page in the web UI, all MQTT topics configurable there (collapsed sections "Advanced options" / "Topic names"), plus port, client id, keepalive, on/off payloads (e.g. true/false for ioBroker), retain flag and log publishing
 - connection diagnostics: reason of MQTT/WiFi connection losses in the log, counters on the system page
 
 Wishlist / Todo:
@@ -189,7 +190,7 @@ Matching fingerprints (and also ring events) are published as messages to your M
 
 <img  src="https://raw.githubusercontent.com/geronet1/FingerprintDoorbell/master/doc/images/web-settings.png"  width="300">
 
-All sub topics (and the on/off payloads) can be changed in the settings under "MQTT topics & options". The defaults are:
+All sub topics (and the on/off payloads) can be changed on the "MQTT" page under "Topic names" / "Advanced options". The defaults are:
 
 | MQTT Topic                           | Action    | Values | 
 | ------------------------------------ | --------- | -------- |

@@ -37,7 +37,8 @@ struct AppSettings
   String topicLedRing = "ledRing";
   String topicOpenDoor = "openDoor";
   String ntpServer = "pool.ntp.org";
-  String timezone = "CET-1CEST,M3.5.0,M10.5.0/3";
+  String timezone = "CET-1CEST,M3.5.0,M10.5.0/3"; // POSIX TZ string, this is what is applied
+  String timezoneName = "Europe/Berlin";              // name selected in the web UI, empty = custom POSIX string
   String sensorPin = "00000000";
   String sensorPairingCode = "";
   int8_t touchRingActiveColor = 2;

@@ -47,6 +47,7 @@ bool SettingsManager::loadAppSettings()
         appSettings.topicOpenDoor = preferences.getString("tOpenDoor", String("openDoor"));
         appSettings.ntpServer = preferences.getString("ntpServer", String("pool.ntp.org"));
         appSettings.timezone = preferences.getString("timezone", String("CET-1CEST,M3.5.0,M10.5.0/3"));
+        appSettings.timezoneName = preferences.getString("tzName", String(""));
         appSettings.sensorPin = preferences.getString("sensorPin", "00000000");
         appSettings.sensorPairingCode = preferences.getString("pairingCode", "");
         appSettings.sensorPairingValid = preferences.getBool("pairingValid", false);
@@ -101,6 +102,7 @@ void SettingsManager::saveAppSettings()
     preferences.putString("tOpenDoor", appSettings.topicOpenDoor);
     preferences.putString("ntpServer", appSettings.ntpServer);
     preferences.putString("timezone", appSettings.timezone);
+    preferences.putString("tzName", appSettings.timezoneName);
     preferences.putString("sensorPin", appSettings.sensorPin);
     preferences.putString("pairingCode", appSettings.sensorPairingCode);
     preferences.putBool("pairingValid", appSettings.sensorPairingValid);

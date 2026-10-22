@@ -27,7 +27,7 @@ pio run -t buildfs      # web UI (data/) -> spiffs.bin
 - `src/main.cpp`: Wi-Fi/AP config mode, web server routes, the template `processor()`, MQTT (connect, callback, HA discovery), and the main `loop()` state machine (`Mode::scan/enroll/wificonfig/maintenance`).
 - `src/FingerprintManager.*`: all sensor communication (scan, enroll, LED ring, notepad-based sensor pairing). Finger names are stored in NVS namespace `fingerList`.
 - `src/SettingsManager.*`: `WifiSettings`/`AppSettings` stored in NVS (`Preferences`). A new setting needs four places: the struct default, `load`, `save`, and the `/settings` handler plus a `processor()` placeholder.
-- `data/*.html`: pages served from SPIFFS. `%PLACEHOLDER%` is replaced by `processor()`. They use the local `bootstrap.min.css`; do not add CDN links, because the device must work without internet.
+- `data/*.html`: pages served from SPIFFS (`index` fingerprints, `settings` general/LED/time, `mqtt` broker/topics/HA, `system` diagnostics, `wificonfig` AP mode). Each page posts to its own route and must only touch its own settings fields. `%PLACEHOLDER%` is replaced by `processor()`. They use the local `bootstrap.min.css`; do not add CDN links, because the device must work without internet.
 
 ## Pitfalls (already caused bugs here)
 
@@ -37,6 +37,7 @@ pio run -t buildfs      # web UI (data/) -> spiffs.bin
 - **Auth**: every normal-mode route must check `webPassword` the same way the existing ones do. Register the OTA `updateServer.setup()` exactly once, because an earlier unauthenticated registration wins.
 - **Concurrency**: web handlers run in the AsyncTCP task, while `loop()` and `mqttCallback` run in the Arduino loop task. Only the loop task may talk to the sensor. Web handlers that need the sensor must call `waitForMaintenanceMode()` first (see delete finger).
 - **Blocking**: `delay()` calls in `doScan`/enrollment stall `mqttClient.loop()`. Keep them short, or MQTT keepalive (15 s) can time out.
+- Time zone: the C library silently falls back to UTC for an invalid TZ string (shows up as 1-2 h offset). Always pass it through `resolveTimezone()` (accepts names from the `timezones[]` table or POSIX strings) and apply it with `configTzTime()`.
 - Settings forms use POST (`HTTP_GET | HTTP_POST` routes) so passwords do not end up in URLs.
 
 ## MQTT interface

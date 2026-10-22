@@ -18,15 +18,6 @@
 			margin-right: 15px;
 		}
 
-		.mqtt-advanced {
-			margin-bottom: 15px;
-		}
-
-		.mqtt-advanced summary {
-			cursor: pointer;
-			font-weight: bold;
-			margin: 0 0 15px 0;
-		}
 	</style>
 </head>
 
@@ -62,6 +53,7 @@
 			<ul class="nav navbar-nav">
 				<li><a href="/">Fingerprints</a></li>
 				<li class="active"><a href="#">Settings</a></li>
+				<li><a href="mqtt">MQTT</a></li>
 				<li><a href="system">System</a></li>
 			</ul>
 		</div>
@@ -86,220 +78,6 @@
 			</div>
 
 			<div class="form-group">
-				<label class="col-md-4 control-label" for="mqtt_server">MQTT Server</label>
-				<div class="col-md-4">
-					<input id="mqtt_server" name="mqtt_server" type="text" placeholder="Hostname or IP of your MQTT broker"
-						class="form-control input-md" value="%MQTT_SERVER%" required>
-				</div>
-			</div>
-
-			<div class="form-group">
-				<label class="col-md-4 control-label" for="mqtt_port">MQTT Port</label>
-				<div class="col-md-4">
-					<input id="mqtt_port" name="mqtt_port" type="number" min="1" max="65535" placeholder="1883"
-						class="form-control input-md" value="%MQTT_PORT%">
-				</div>
-			</div>
-
-			<div class="form-group">
-				<label class="col-md-4 control-label" for="mqtt_username">MQTT Username</label>
-				<div class="col-md-4">
-					<input id="mqtt_username" name="mqtt_username" type="text"
-						placeholder="Username for connecting to your MQTT Broker" class="form-control input-md"
-						value="%MQTT_USERNAME%">
-					<small class="text-muted">Leave empty if your broker is not requiring authentication.</small>
-				</div>
-			</div>
-
-			<div class="form-group">
-				<label class="col-md-4 control-label" for="mqtt_password">MQTT Password</label>
-				<div class="col-md-4">
-					<input id="mqtt_password" name="mqtt_password" type="password" autocomplete="new-password"
-						placeholder="Password for connecting to your MQTT Broker" class="form-control input-md"
-						value="%MQTT_PASSWORD%">
-					<small class="text-muted">Leave empty if your broker is not requiring authentication.</small>
-				</div>
-			</div>
-
-			<div class="form-group">
-				<label class="col-md-4 control-label" for="mqtt_rootTopic">MQTT Root Topic</label>
-				<div class="col-md-4">
-					<input id="mqtt_rootTopic" name="mqtt_rootTopic" type="text"
-						placeholder="e.g. fingerprintDoorbell" class="form-control input-md" value="%MQTT_ROOTTOPIC%">
-					<small class="text-muted">All topics below are published/subscribed under this root topic. In ioBroker
-						it becomes the folder name (e.g. "mqtt.0.&lt;root topic&gt;").</small>
-				</div>
-			</div>
-
-			<details class="mqtt-advanced">
-				<summary>MQTT topics &amp; options</summary>
-
-				<div class="form-group">
-					<label class="col-md-4 control-label" for="mqtt_clientId">Client ID</label>
-					<div class="col-md-4">
-						<input id="mqtt_clientId" name="mqtt_clientId" type="text" placeholder="%HOSTNAME%"
-							class="form-control input-md" value="%MQTT_CLIENTID%">
-						<small class="text-muted">Name of the connection at the broker. Leave empty to use the hostname. Must be
-							unique, two devices with the same id disconnect each other.</small>
-					</div>
-				</div>
-
-				<div class="form-group">
-					<label class="col-md-4 control-label" for="mqtt_keepAlive">Keepalive (s)</label>
-					<div class="col-md-4">
-						<input id="mqtt_keepAlive" name="mqtt_keepAlive" type="number" min="5" max="300"
-							class="form-control input-md" value="%MQTT_KEEPALIVE%">
-						<small class="text-muted">Interval of the keepalive ping (5-300s, default 15). A higher value can help
-							with unstable WiFi connections.</small>
-					</div>
-				</div>
-
-				<div class="form-group">
-					<label class="col-md-4 control-label" for="payload_on">Payload on / off</label>
-					<div class="col-md-2">
-						<input id="payload_on" name="payload_on" type="text" placeholder="on" class="form-control input-md"
-							value="%PAYLOAD_ON%">
-					</div>
-					<div class="col-md-2">
-						<input id="payload_off" name="payload_off" type="text" placeholder="off" class="form-control input-md"
-							value="%PAYLOAD_OFF%">
-					</div>
-					<div class="col-md-4 col-md-offset-4">
-						<small class="text-muted">Used for ring and switch states, e.g. "true"/"false" for ioBroker booleans.
-							Commands always accept on/off, true/false and 1/0 too.</small>
-					</div>
-				</div>
-
-				<div class="form-group">
-					<label class="col-md-4 control-label">Options</label>
-					<div class="col-md-4">
-						<div class="checkbox">
-							<label><input type="checkbox" name="mqtt_retain" value="on" %MQTT_RETAIN%>
-								Publish ring and match topics retained</label>
-						</div>
-						<div class="checkbox">
-							<label><input type="checkbox" name="mqtt_publishLog" value="on" %MQTT_PUBLISHLOG%>
-								Publish log messages</label>
-						</div>
-					</div>
-				</div>
-
-				<div class="form-group">
-					<label class="col-md-4 control-label" for="t_lwt">Online status</label>
-					<div class="col-md-4">
-						<div class="input-group">
-							<span class="input-group-addon root-prefix">%MQTT_ROOTTOPIC%/</span>
-							<input id="t_lwt" name="t_lwt" type="text" class="form-control input-md" value="%T_LWT%" placeholder="LWT">
-						</div>
-						<small class="text-muted">publish (retained): "Online" / "Offline" (last will)</small>
-					</div>
-				</div>
-				<div class="form-group">
-					<label class="col-md-4 control-label" for="t_ring">Ring</label>
-					<div class="col-md-4">
-						<div class="input-group">
-							<span class="input-group-addon root-prefix">%MQTT_ROOTTOPIC%/</span>
-							<input id="t_ring" name="t_ring" type="text" class="form-control input-md" value="%T_RING%" placeholder="ring">
-						</div>
-						<small class="text-muted">publish: on-payload for 1s when the bell rings, otherwise off-payload</small>
-					</div>
-				</div>
-				<div class="form-group">
-					<label class="col-md-4 control-label" for="t_matchId">Match ID</label>
-					<div class="col-md-4">
-						<div class="input-group">
-							<span class="input-group-addon root-prefix">%MQTT_ROOTTOPIC%/</span>
-							<input id="t_matchId" name="t_matchId" type="text" class="form-control input-md" value="%T_MATCHID%" placeholder="matchId">
-						</div>
-						<small class="text-muted">publish: id of the matching finger for 3s, otherwise "-1"</small>
-					</div>
-				</div>
-				<div class="form-group">
-					<label class="col-md-4 control-label" for="t_matchName">Match name</label>
-					<div class="col-md-4">
-						<div class="input-group">
-							<span class="input-group-addon root-prefix">%MQTT_ROOTTOPIC%/</span>
-							<input id="t_matchName" name="t_matchName" type="text" class="form-control input-md" value="%T_MATCHNAME%" placeholder="matchName">
-						</div>
-						<small class="text-muted">publish: name of the matching finger for 3s, otherwise empty</small>
-					</div>
-				</div>
-				<div class="form-group">
-					<label class="col-md-4 control-label" for="t_matchConf">Match confidence</label>
-					<div class="col-md-4">
-						<div class="input-group">
-							<span class="input-group-addon root-prefix">%MQTT_ROOTTOPIC%/</span>
-							<input id="t_matchConf" name="t_matchConf" type="text" class="form-control input-md" value="%T_MATCHCONF%" placeholder="matchConfidence">
-						</div>
-						<small class="text-muted">publish: 1 (low) - 400 (very high) for 3s, otherwise "-1"</small>
-					</div>
-				</div>
-				<div class="form-group">
-					<label class="col-md-4 control-label" for="t_lastLog">Log messages</label>
-					<div class="col-md-4">
-						<div class="input-group">
-							<span class="input-group-addon root-prefix">%MQTT_ROOTTOPIC%/</span>
-							<input id="t_lastLog" name="t_lastLog" type="text" class="form-control input-md" value="%T_LASTLOG%" placeholder="lastLogMessage">
-						</div>
-						<small class="text-muted">publish: every message of the log panel (if enabled under "Options")</small>
-					</div>
-				</div>
-				<div class="form-group">
-					<label class="col-md-4 control-label" for="t_ignoreRing">Ignore touch ring</label>
-					<div class="col-md-4">
-						<div class="input-group">
-							<span class="input-group-addon root-prefix">%MQTT_ROOTTOPIC%/</span>
-							<input id="t_ignoreRing" name="t_ignoreRing" type="text" class="form-control input-md" value="%T_IGNORERING%" placeholder="ignoreTouchRing">
-						</div>
-						<small class="text-muted">subscribe: on/off, e.g. when it rains. State is published to ".../state" (retained)</small>
-					</div>
-				</div>
-				<div class="form-group">
-					<label class="col-md-4 control-label" for="t_ledRing">LED ring</label>
-					<div class="col-md-4">
-						<div class="input-group">
-							<span class="input-group-addon root-prefix">%MQTT_ROOTTOPIC%/</span>
-							<input id="t_ledRing" name="t_ledRing" type="text" class="form-control input-md" value="%T_LEDRING%" placeholder="ledRing">
-						</div>
-						<small class="text-muted">subscribe: on/off, switch the idle LED ring off (e.g. at night). State is published to ".../state" (retained)</small>
-					</div>
-				</div>
-				<div class="form-group">
-					<label class="col-md-4 control-label" for="t_openDoor">Open door</label>
-					<div class="col-md-4">
-						<div class="input-group">
-							<span class="input-group-addon root-prefix">%MQTT_ROOTTOPIC%/</span>
-							<input id="t_openDoor" name="t_openDoor" type="text" class="form-control input-md" value="%T_OPENDOOR%" placeholder="openDoor">
-						</div>
-						<small class="text-muted">subscribe: on-payload pulses the door opener output (GPIO 23) for 1s</small>
-					</div>
-				</div>
-			</details>
-			<script>
-				// keep the root topic prefix in front of the sub topics up to date while typing
-				document.getElementById('mqtt_rootTopic').addEventListener('input', function (e) {
-					var root = e.target.value.trim().replace(/^\/+|\/+$/g, '');
-					document.querySelectorAll('.root-prefix').forEach(function (el) {
-						el.textContent = root ? root + '/' : '';
-					});
-				});
-			</script>
-
-			<div class="form-group">
-				<label class="col-md-4 control-label" for="ha_discovery">Home Assistant</label>
-				<div class="col-md-4">
-					<div class="checkbox">
-						<label>
-							<input type="checkbox" id="ha_discovery" name="ha_discovery" value="on" %HA_DISCOVERY%>
-							Enable MQTT discovery
-						</label>
-					</div>
-					<small class="text-muted">Publishes discovery configs under "homeassistant/...", so the doorbell
-						shows up as a device in Home Assistant automatically.</small>
-				</div>
-			</div>
-
-			<div class="form-group">
 				<label class="col-md-4 control-label" for="ntpServer">NTP Server</label>
 				<div class="col-md-4">
 					<input id="ntpServer" name="ntpServer" type="text" placeholder="URL to NTP server"
@@ -310,13 +88,32 @@
 			</div>
 
 			<div class="form-group">
-				<label class="col-md-4 control-label" for="timezone">Timezone</label>
+				<label class="col-md-4 control-label" for="timezone_select">Timezone</label>
 				<div class="col-md-4">
-					<input id="timezone" name="timezone" type="text" placeholder=""
-						class="form-control input-md" value="%TIMEZONE%">
-					<small class="text-muted">Lookup your timezone at <a href="https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv">Github</a></small>
+					<select id="timezone_select" name="timezone_select" class="form-control">
+						%TIMEZONE_OPTIONS%
+					</select>
+					<input id="timezone" name="timezone" type="text" placeholder="e.g. CET-1CEST,M3.5.0,M10.5.0/3"
+						class="form-control input-md" style="margin-top: 5px" value="%TIMEZONE%">
+					<small class="text-muted">Current device time: <b>%LOCAL_TIME%</b><br>
+						<span id="timezone_help">For "Custom" enter a POSIX TZ string, see
+							<a href="https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv" target="_blank">zones.csv</a>
+							(second column).</span></small>
 				</div>
 			</div>
+			<script>
+				// the POSIX text field is only needed for a custom time zone
+				(function () {
+					var select = document.getElementById('timezone_select');
+					function update() {
+						var custom = select.value === 'custom';
+						document.getElementById('timezone').style.display = custom ? '' : 'none';
+						document.getElementById('timezone_help').style.display = custom ? '' : 'none';
+					}
+					select.addEventListener('change', update);
+					update();
+				})();
+			</script>
 
 			<div class="form-group">
 				<label for="touchRingActiveColor" class="col-md-4 control-label">Touch Ring Active: LED Color</label>

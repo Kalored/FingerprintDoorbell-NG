@@ -33,8 +33,6 @@ IPAddress WifiConfigIp(192, 168, 4, 1);                    // IP of access point
 const char *Selected = "selected"; // password used for WiFi when in Access Point mode for configuration. Min. 8 chars needed!
 const char *Checked = "checked";   // password used for WiFi when in Access Point mode for configuration. Min. 8 chars needed!
 
-const long gmtOffset_sec = 0;       // UTC Time
-const int daylightOffset_sec = 0;   // UTC Time
 const int doorbellOutputPin = 19;   // pin connected to the doorbell (when using hardware connection instead of mqtt to ring the bell)
 const int dooropenerOutputPin = 23; // pin connected to the door opener (when using hardware connection instead of mqtt to open the door)
 
@@ -242,6 +240,123 @@ String sanitizeTopic(String topic, const char *defaultTopic, bool allowEmpty = f
   if (topic.isEmpty() && !allowEmpty)
     return String(defaultTopic);
   return topic;
+}
+
+// Common time zones (name as shown in the web UI -> POSIX TZ string understood by the ESP32)
+struct TimezoneEntry
+{
+  const char *name;
+  const char *posix;
+};
+
+const TimezoneEntry timezones[] = {
+    {"Europe/Berlin", "CET-1CEST,M3.5.0,M10.5.0/3"},
+    {"Europe/Vienna", "CET-1CEST,M3.5.0,M10.5.0/3"},
+    {"Europe/Zurich", "CET-1CEST,M3.5.0,M10.5.0/3"},
+    {"Europe/Amsterdam", "CET-1CEST,M3.5.0,M10.5.0/3"},
+    {"Europe/Brussels", "CET-1CEST,M3.5.0,M10.5.0/3"},
+    {"Europe/Luxembourg", "CET-1CEST,M3.5.0,M10.5.0/3"},
+    {"Europe/Paris", "CET-1CEST,M3.5.0,M10.5.0/3"},
+    {"Europe/Rome", "CET-1CEST,M3.5.0,M10.5.0/3"},
+    {"Europe/Madrid", "CET-1CEST,M3.5.0,M10.5.0/3"},
+    {"Europe/Copenhagen", "CET-1CEST,M3.5.0,M10.5.0/3"},
+    {"Europe/Oslo", "CET-1CEST,M3.5.0,M10.5.0/3"},
+    {"Europe/Stockholm", "CET-1CEST,M3.5.0,M10.5.0/3"},
+    {"Europe/Warsaw", "CET-1CEST,M3.5.0,M10.5.0/3"},
+    {"Europe/Prague", "CET-1CEST,M3.5.0,M10.5.0/3"},
+    {"Europe/Budapest", "CET-1CEST,M3.5.0,M10.5.0/3"},
+    {"Europe/London", "GMT0BST,M3.5.0/1,M10.5.0"},
+    {"Europe/Dublin", "IST-1GMT0,M10.5.0,M3.5.0/1"},
+    {"Europe/Lisbon", "WET0WEST,M3.5.0/1,M10.5.0"},
+    {"Europe/Helsinki", "EET-2EEST,M3.5.0/3,M10.5.0/4"},
+    {"Europe/Athens", "EET-2EEST,M3.5.0/3,M10.5.0/4"},
+    {"Europe/Istanbul", "<+03>-3"},
+    {"Europe/Moscow", "MSK-3"},
+    {"America/New_York", "EST5EDT,M3.2.0,M11.1.0"},
+    {"America/Chicago", "CST6CDT,M3.2.0,M11.1.0"},
+    {"America/Denver", "MST7MDT,M3.2.0,M11.1.0"},
+    {"America/Los_Angeles", "PST8PDT,M3.2.0,M11.1.0"},
+    {"Asia/Dubai", "<+04>-4"},
+    {"Asia/Kolkata", "IST-5:30"},
+    {"Asia/Shanghai", "CST-8"},
+    {"Asia/Tokyo", "JST-9"},
+    {"Australia/Sydney", "AEST-10AEDT,M10.1.0,M4.1.0/3"},
+    {"UTC", "UTC0"},
+};
+const char *DefaultTimezone = "CET-1CEST,M3.5.0,M10.5.0/3";
+
+const char *findTimezonePosix(const String &name)
+{
+  for (const TimezoneEntry &tz : timezones)
+  {
+    if (name.equalsIgnoreCase(tz.name))
+      return tz.posix;
+  }
+  return nullptr;
+}
+
+// rough check of a POSIX TZ string ("CET-1CEST,...", "<+03>-3"). An invalid string is silently treated as UTC by the
+// C library, which shows up as a time offset of 1-2 hours, so better fall back to a sane default.
+bool isValidPosixTimezone(const String &tz)
+{
+  unsigned int i = 0;
+  if (tz.startsWith("<"))
+  {
+    int end = tz.indexOf('>');
+    if (end < 2)
+      return false;
+    i = end + 1;
+  }
+  else
+  {
+    while (i < tz.length() && isalpha(tz.charAt(i)))
+      i++;
+    if (i < 3)
+      return false;
+  }
+  if (i < tz.length() && (tz.charAt(i) == '+' || tz.charAt(i) == '-'))
+    i++;
+  return i < tz.length() && isdigit(tz.charAt(i));
+}
+
+// accepts a name from the table (e.g. "Europe/Berlin") or a POSIX TZ string, returns a valid POSIX TZ string
+String resolveTimezone(String tz)
+{
+  tz.trim();
+  const char *posix = findTimezonePosix(tz);
+  if (posix)
+    return String(posix);
+  if (isValidPosixTimezone(tz))
+    return tz;
+  return String(DefaultTimezone);
+}
+
+String getTimezoneOptionsAsHtml()
+{
+  const AppSettings &settings = settingsManager.getAppSettings();
+  String selectedName = settings.timezoneName;
+  if (selectedName.isEmpty())
+  {
+    // no name stored (older settings): select the first entry with the same POSIX string, if any
+    for (const TimezoneEntry &tz : timezones)
+    {
+      if (settings.timezone == tz.posix)
+      {
+        selectedName = tz.name;
+        break;
+      }
+    }
+  }
+  String html;
+  bool found = false;
+  for (const TimezoneEntry &tz : timezones)
+  {
+    bool selected = selectedName.equalsIgnoreCase(tz.name);
+    found = found || selected;
+    html += String("<option value=\"") + tz.name + "\"" + (selected ? " selected" : "") + ">" + tz.name + "</option>";
+  }
+  html += String("<option value=\"custom\"") + (found ? "" : " selected") + ">Custom (POSIX string)</option>";
+  return html;
 }
 
 /* wait for maintenance mode or timeout 5s */
@@ -518,6 +633,14 @@ String processor(const String &var)
   {
     return htmlEscape(settingsManager.getAppSettings().ntpServer);
   }
+  else if (var == "TIMEZONE_OPTIONS")
+  {
+    return getTimezoneOptionsAsHtml();
+  }
+  else if (var == "LOCAL_TIME")
+  {
+    return getTimestampString();
+  }
   else if (var == "TIMEZONE")
   {
     return htmlEscape(settingsManager.getAppSettings().timezone);
@@ -756,11 +879,17 @@ void startWebserver()
   // (otherwise random memory content is resolved as hostname every few seconds)
   static String ntpServer;
   ntpServer = settingsManager.getAppSettings().ntpServer;
+  String timezone = resolveTimezone(settingsManager.getAppSettings().timezone);
+  Serial.printf("Setting Timezone to %s\n", timezone.c_str());
   if (!ntpServer.isEmpty())
-    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer.c_str());
-  Serial.printf("Setting Timezone to %s\n", settingsManager.getAppSettings().timezone.c_str());
-  setenv("TZ", settingsManager.getAppSettings().timezone.c_str(), 1);  //  Now adjust the TZ.  Clock settings are adjusted to show the new local time
-  tzset();
+    configTzTime(timezone.c_str(), ntpServer.c_str()); // sets NTP server and time zone (setenv copies the TZ string)
+  else
+  {
+    setenv("TZ", timezone.c_str(), 1);
+    tzset();
+  }
+  if (timezone != settingsManager.getAppSettings().timezone)
+    notifyClients("Invalid timezone '" + settingsManager.getAppSettings().timezone + "', using '" + timezone + "' instead. Please check your settings.");
 
   // webserver for normal operating or wifi config?
   if (currentMode == Mode::wificonfig)
@@ -878,6 +1007,43 @@ void startWebserver()
           settings.webPassword = settingsManager.getAppSettings().webPassword; // use the old, already saved, one
         else
           settings.webPassword = request->arg("web_password");
+        settings.ntpServer = request->arg("ntpServer");
+        String timezoneSelection = request->arg("timezone_select");
+        if (timezoneSelection.isEmpty() || timezoneSelection == "custom")
+        {
+          settings.timezoneName = "";
+          settings.timezone = resolveTimezone(request->arg("timezone"));
+          if (findTimezonePosix(request->arg("timezone"))) // user typed a known name like "Europe/Berlin"
+            settings.timezoneName = request->arg("timezone");
+        }
+        else
+        {
+          settings.timezoneName = timezoneSelection;
+          settings.timezone = resolveTimezone(timezoneSelection);
+        }
+        settings.touchRingActiveColor = request->arg("touchRingActiveColor").toInt();
+        settings.touchRingActiveSequence = request->arg("touchRingActiveSequence").toInt();
+        settings.scanColor = request->arg("scanColor").toInt();
+        settings.matchColor = request->arg("matchColor").toInt();
+        settingsManager.saveAppSettings(settings);
+        request->redirect("/");  
+        shouldReboot = true;
+      } else {
+        request->send(SPIFFS, "/settings.html", String(), false, processor);
+      } });
+
+    webServer.on("/mqtt", HTTP_GET | HTTP_POST, [](AsyncWebServerRequest *request)
+                 {
+      if (!settingsManager.getAppSettings().webPassword.isEmpty())
+      {
+        if(!request->authenticate(webServerUser, settingsManager.getAppSettings().webPassword.c_str()))
+          return request->requestAuthentication();
+      }
+
+      if(request->hasArg("btnSaveMqtt"))
+      {
+        Serial.println("Save MQTT settings");
+        AppSettings settings = settingsManager.getAppSettings();
         settings.mqttServer = request->arg("mqtt_server");
         settings.mqttServer.trim();
         settings.mqttPort = request->arg("mqtt_port").toInt();
@@ -920,17 +1086,11 @@ void startWebserver()
         settings.topicLedRing = sanitizeTopic(request->arg("t_ledRing"), "ledRing");
         settings.topicOpenDoor = sanitizeTopic(request->arg("t_openDoor"), "openDoor");
         settings.haDiscovery = request->hasArg("ha_discovery");
-        settings.ntpServer = request->arg("ntpServer");
-        settings.timezone = request->arg("timezone");
-        settings.touchRingActiveColor = request->arg("touchRingActiveColor").toInt();
-        settings.touchRingActiveSequence = request->arg("touchRingActiveSequence").toInt();
-        settings.scanColor = request->arg("scanColor").toInt();
-        settings.matchColor = request->arg("matchColor").toInt();
         settingsManager.saveAppSettings(settings);
-        request->redirect("/");  
+        request->redirect("/");
         shouldReboot = true;
       } else {
-        request->send(SPIFFS, "/settings.html", String(), false, processor);
+        request->send(SPIFFS, "/mqtt.html", String(), false, processor);
       } });
 
     webServer.on("/system", HTTP_GET, [](AsyncWebServerRequest *request)
