@@ -52,6 +52,13 @@ Changes in 0.7.1:
 Changes in 0.7.2:
 - fast boot: the device doesn't wait for WiFi anymore. Before, it rebooted after 30s without WiFi connection, which could end in a reboot loop of several minutes. Now the sensor, doorbell and web server start immediately, WiFi connects in the background (retried every 20s) and MQTT connects as soon as WiFi is up. The doorbell output also works without WiFi.
 - log shows the boot time and after how many seconds WiFi was connected
+- web server (incl. update page) is always started, even if the file system is damaged
+
+Changes in 0.7.3:
+- WiFi: scans and connects to the strongest access point of the configured network (helps with multiple APs / mesh), every second retry restarts the WiFi stack
+- WiFi disconnect reason (e.g. "15 4-way handshake timeout") in the log and on the system page
+
+WiFi problems with multi-AP systems (e.g. TP-Link Omada): the ESP32 only supports 2.4 GHz and WPA2. If it needs long to connect, try for its SSID: WPA2-PSK (AES) only instead of WPA2/WPA3, PMF (management frame protection) disabled, 802.11r / fast roaming disabled, band steering disabled. A separate 2.4 GHz IoT SSID with these settings works best.
 
 Wishlist / Todo:
 - make GPIOs configurable

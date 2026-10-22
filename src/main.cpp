@@ -27,7 +27,7 @@ enum class Mode
   restore
 };
 
-const char *VersionInfo = "0.7.2";
+const char *VersionInfo = "0.7.3";
 
 // ===================================================================================================================
 // Caution: below are not the credentials for connecting to your home network, they are for the Access Point mode!!!
@@ -60,6 +60,8 @@ bool shouldReboot = false;
 unsigned long wifiReconnectPreviousMillis = 0;
 unsigned long wifiConnectAttempts = 0;
 bool wifiEverConnected = false;
+volatile uint8_t lastWifiDisconnectReason = 0; // set by the WiFi event handler
+volatile unsigned long wifiDisconnectEvents = 0;
 unsigned long mqttReconnectPreviousMillis = 0;
 
 String enrollId;
@@ -139,6 +141,7 @@ const int8_t radarPinCandidates[] = {4, 13, 14, 25, 26, 27, 32, 33, 34, 35, 36, 
 
 String getFingerListHtml();
 String mqttTopic(const String &subTopic);
+String getWifiReasonString(uint8_t reason);
 String minutesToTimeString(uint16_t minutes);
 uint16_t timeStringToMinutes(const String &text, uint16_t defaultValue);
 bool isRadarPinAllowed(int pin);
@@ -573,6 +576,10 @@ String processor(const String &var)
   {
     return String(wifiLostCount);
   }
+  else if (var == "WIFI_REASON")
+  {
+    return getWifiReasonString(lastWifiDisconnectReason) + " (" + wifiDisconnectEvents + " disconnect events)";
+  }
   else if (var == "UPTIME")
   {
     return getUptimeString();
@@ -962,10 +969,105 @@ bool checkPairingValid()
   }
 }
 
+String getWifiReasonString(uint8_t reason)
+{
+  switch (reason)
+  {
+  case 0: return "none";
+  case WIFI_REASON_AUTH_EXPIRE: return "2 auth expired";
+  case WIFI_REASON_AUTH_LEAVE: return "3 auth leave";
+  case WIFI_REASON_ASSOC_EXPIRE: return "4 assoc expired";
+  case WIFI_REASON_ASSOC_TOOMANY: return "5 too many clients on AP";
+  case WIFI_REASON_NOT_AUTHED: return "6 not authenticated";
+  case WIFI_REASON_ASSOC_LEAVE: return "8 assoc leave";
+  case WIFI_REASON_MIC_FAILURE: return "14 MIC failure";
+  case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT: return "15 4-way handshake timeout (wrong password or WPA3/PMF setting?)";
+  case WIFI_REASON_GROUP_KEY_UPDATE_TIMEOUT: return "16 group key update timeout";
+  case WIFI_REASON_IE_IN_4WAY_DIFFERS: return "17 IE in 4-way handshake differs";
+  case WIFI_REASON_PAIRWISE_CIPHER_INVALID: return "19 pairwise cipher invalid";
+  case WIFI_REASON_AKMP_INVALID: return "20 AKMP invalid (WPA3 only?)";
+  case WIFI_REASON_INVALID_RSN_IE_CAP: return "22 invalid RSN capabilities (PMF required?)";
+  case WIFI_REASON_BEACON_TIMEOUT: return "200 beacon timeout (signal lost)";
+  case WIFI_REASON_NO_AP_FOUND: return "201 no AP found";
+  case WIFI_REASON_AUTH_FAIL: return "202 authentication failed";
+  case WIFI_REASON_ASSOC_FAIL: return "203 association failed";
+  case WIFI_REASON_HANDSHAKE_TIMEOUT: return "204 handshake timeout";
+  case WIFI_REASON_CONNECTION_FAIL: return "205 connection failed";
+  default: return String(reason);
+  }
+}
+
+// scans for the configured SSID and connects to the strongest access point (helps with mesh/repeaters).
+// fullReset restarts the WiFi stack: with this framework version the connection sometimes hangs until then.
+void connectWifi(bool fullReset)
+{
+  const WifiSettings &wifiSettings = settingsManager.getWifiSettings();
+  if (fullReset)
+  {
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    delay(200);
+    WiFi.mode(WIFI_STA);
+    WiFi.setSleep(false);
+    WiFi.setHostname(wifiSettings.hostname.c_str());
+  }
+  else
+    WiFi.disconnect();
+
+  int found = WiFi.scanNetworks(false, false, false, 120); // blocks ~2s
+  int best = -1;
+  int apCount = 0;
+  for (int i = 0; i < found; i++)
+  {
+    if (WiFi.SSID(i) == wifiSettings.ssid)
+    {
+      apCount++;
+      if (best < 0 || WiFi.RSSI(i) > WiFi.RSSI(best))
+        best = i;
+    }
+  }
+
+  if (best >= 0)
+  {
+    uint8_t bssid[6];
+    memcpy(bssid, WiFi.BSSID(best), 6);
+    int32_t channel = WiFi.channel(best);
+    int32_t rssi = WiFi.RSSI(best);
+    char bssidText[18];
+    snprintf(bssidText, sizeof(bssidText), "%02X:%02X:%02X:%02X:%02X:%02X", bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
+    WiFi.scanDelete();
+    Serial.printf("Connecting to AP %s (channel %d, %d dBm, %d AP(s) with this SSID)\n", bssidText, channel, rssi, apCount);
+    if (wifiConnectAttempts > 0)
+      notifyClients(String("WiFi retry: connecting to AP ") + bssidText + " (channel " + channel + ", " + rssi + " dBm, " + apCount + " AP(s) found)" + (fullReset ? ", WiFi restarted" : ""));
+    WiFi.begin(wifiSettings.ssid.c_str(), wifiSettings.password.c_str(), channel, bssid);
+  }
+  else
+  {
+    WiFi.scanDelete();
+    if (wifiConnectAttempts > 0)
+      notifyClients("WiFi retry: network '" + wifiSettings.ssid + "' not found in scan (" + found + " networks visible).");
+    WiFi.begin(wifiSettings.ssid.c_str(), wifiSettings.password.c_str());
+  }
+  wifiReconnectPreviousMillis = millis();
+}
+
 // starts the WiFi connection in the background. The boot does not wait for it anymore: before, the device rebooted
 // after 30s without connection, which could end in a reboot loop of several minutes with a weak signal.
 void initWifi()
 {
+  static bool eventHandlerRegistered = false;
+  if (!eventHandlerRegistered)
+  {
+    // remember why the connection failed / was lost, the reason codes tell much more than the status
+    WiFi.onEvent([](system_event_id_t event, system_event_info_t info)
+                 {
+                   lastWifiDisconnectReason = info.disconnected.reason;
+                   wifiDisconnectEvents++;
+                 },
+                 SYSTEM_EVENT_STA_DISCONNECTED);
+    eventHandlerRegistered = true;
+  }
+
   WifiSettings wifiSettings = settingsManager.getWifiSettings();
   WiFi.persistent(false); // credentials are stored in our own settings, don't write them to flash on every boot
   WiFi.mode(WIFI_STA);
@@ -975,8 +1077,7 @@ void initWifi()
   WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
   WiFi.setHostname(wifiSettings.hostname.c_str()); // define hostname
   WiFi.setAutoReconnect(true);
-  WiFi.begin(wifiSettings.ssid.c_str(), wifiSettings.password.c_str());
-  wifiReconnectPreviousMillis = millis();
+  connectWifi(false);
   Serial.println("WiFi connection started in background");
 }
 
@@ -2370,12 +2471,12 @@ void loop()
     if (wifiWasConnected && !wifiConnected)
     {
       wifiLostCount++;
-      notifyClients("WiFi connection lost (status " + String(WiFi.status()) + ")");
+      notifyClients("WiFi connection lost (status " + String(WiFi.status()) + ", reason: " + getWifiReasonString(lastWifiDisconnectReason) + ")");
     }
     else if (!wifiWasConnected && wifiConnected)
     {
       if (!wifiEverConnected)
-        notifyClients("WiFi connected after " + String(millis() / 1000.0) + "s, IP " + WiFi.localIP().toString() + ", RSSI " + String(WiFi.RSSI()) + " dBm");
+        notifyClients("WiFi connected after " + String(millis() / 1000.0) + "s, IP " + WiFi.localIP().toString() + ", AP " + WiFi.BSSIDstr() + " channel " + String(WiFi.channel()) + ", RSSI " + String(WiFi.RSSI()) + " dBm");
       else
         notifyClients("WiFi reconnected, RSSI " + String(WiFi.RSSI()) + " dBm");
       wifiEverConnected = true;
@@ -2393,15 +2494,11 @@ void loop()
 
     // retry WiFi if still not connected after 20s. A fresh WiFi.begin() is more reliable than reconnect() with this
     // framework version (the first connection after a reset sometimes hangs).
-    if (!wifiConnected && (currentMillis - wifiReconnectPreviousMillis >= 20000ul))
+    if (!wifiConnected && (currentMillis - wifiReconnectPreviousMillis >= 15000ul))
     {
       wifiConnectAttempts++;
-      Serial.printf("WiFi not connected (status %d), retry #%lu\n", WiFi.status(), wifiConnectAttempts);
-      if (wifiConnectAttempts % 3 == 0)
-        notifyClients(String("Still no WiFi connection after ") + (millis() / 1000) + "s (status " + WiFi.status() + "), retrying...");
-      WiFi.disconnect();
-      WiFi.begin(settingsManager.getWifiSettings().ssid.c_str(), settingsManager.getWifiSettings().password.c_str());
-      wifiReconnectPreviousMillis = currentMillis;
+      notifyClients(String("No WiFi connection after ") + (millis() / 1000) + "s (status " + WiFi.status() + ", last reason: " + getWifiReasonString(lastWifiDisconnectReason) + ")");
+      connectWifi(wifiConnectAttempts % 2 == 0); // every second retry with a complete restart of the WiFi stack
     }
 
     // reconnect mqtt if down
