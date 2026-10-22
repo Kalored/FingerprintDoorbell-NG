@@ -58,6 +58,20 @@ bool FingerprintManager::connect()
 
   loadFingerListFromPrefs();
 
+  // templates on the sensor we don't have a name for (e.g. enrolled with another firmware) are shown without name
+  {
+    bool occupied[256];
+    uint16_t slots = finger.capacity > 0 && finger.capacity <= 256 ? finger.capacity : 200;
+    if (readIndexTable(occupied, slots))
+    {
+      for (uint16_t i = 1; i < slots && i <= 200; i++)
+      {
+        if (occupied[i] && fingerList[i].compareTo("@empty") == 0)
+          fingerList[i] = "";
+      }
+    }
+  }
+
   connected = true;
   return connected;
 
@@ -286,6 +300,7 @@ NewFinger FingerprintManager::enrollFinger(int id, String name)
   {
     int timeout = 0;
     notifyClients(String("Take #" + String(nTimes)) + " (place your finger on the sensor until led ring stops flashing, then remove it).");
+    onEnrollProgress(String("step ") + nTimes + "/5");
 
     if (nTimes != 1) // not on first run
     {
@@ -529,6 +544,59 @@ bool FingerprintManager::getLedRingEnabled()
   return ledRingEnabled;
 }
 
+void FingerprintManager::setLedRingSuppressed(bool state)
+{
+  if (ledRingSuppressed != state)
+  {
+    ledRingSuppressed = state;
+    if (connected && !lastTouchState)
+      setLedRingReady();
+  }
+}
+
+void FingerprintManager::setLockout(bool state)
+{
+  if (lockedOut != state)
+  {
+    lockedOut = state;
+    if (connected && !lastTouchState)
+      setLedRingReady();
+  }
+}
+
+void FingerprintManager::showAccessDenied()
+{
+  finger.LEDcontrol(FINGERPRINT_LED_FLASHING, 15, FINGERPRINT_LED_RED, 3);
+}
+
+bool FingerprintManager::hasFinger(int id)
+{
+  return (id > 0) && (id <= 200) && (fingerList[id].compareTo("@empty") != 0);
+}
+
+String FingerprintManager::getFingerName(int id)
+{
+  if (!hasFinger(id))
+    return "";
+  return fingerList[id];
+}
+
+int FingerprintManager::getFingerCount()
+{
+  int count = 0;
+  for (int i = 1; i <= 200; i++)
+  {
+    if (hasFinger(i))
+      count++;
+  }
+  return count;
+}
+
+uint16_t FingerprintManager::getCapacity()
+{
+  return finger.capacity;
+}
+
 bool FingerprintManager::isRingTouched()
 {
   if (digitalRead(touchRingPin) == LOW) // LOW = touched. Caution: touchSignal on this pin occour only once (at beginning of touching the ring, not every iteration if you keep your finger on the ring)
@@ -563,7 +631,9 @@ void FingerprintManager::setLedRingWifiConfig()
 
 void FingerprintManager::setLedRingReady()
 {
-  if (!ledRingEnabled)
+  if (lockedOut)
+    finger.LEDcontrol(FINGERPRINT_LED_BREATHING, 100, FINGERPRINT_LED_RED);
+  else if (!ledRingEnabled || ledRingSuppressed)
     finger.LEDcontrol(FINGERPRINT_LED_OFF, 0, touchRingActiveColor);
   else if (!ignoreTouchRing)
     finger.LEDcontrol(touchRingActiveSequence, 250, touchRingActiveColor);
@@ -658,13 +728,182 @@ bool FingerprintManager::setPairingCode(String pairingCode)
     return false;
 }
 
-// ToDo: support sensor replacement by enable transferring of sensor DB to another sensor
-void FingerprintManager::exportSensorDB()
+void FingerprintManager::flushInput()
 {
+  while (mySerial.available())
+    mySerial.read();
 }
 
-void FingerprintManager::importSensorDB()
+void FingerprintManager::writeRawPacket(uint8_t type, const uint8_t *payload, uint16_t length)
 {
+  uint16_t wireLength = length + 2; // payload + checksum
+  uint8_t header[9] = {0xEF, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, type, (uint8_t)(wireLength >> 8), (uint8_t)(wireLength & 0xFF)};
+  uint16_t sum = type + (wireLength >> 8) + (wireLength & 0xFF);
+  for (uint16_t i = 0; i < length; i++)
+    sum += payload[i];
+  mySerial.write(header, sizeof(header));
+  mySerial.write(payload, length);
+  mySerial.write((uint8_t)(sum >> 8));
+  mySerial.write((uint8_t)(sum & 0xFF));
+}
+
+// reads one packet, returns the packet type or -1 on timeout/checksum error. 'length' is the payload length without checksum.
+int FingerprintManager::readRawPacket(uint8_t *payload, uint16_t maxLength, uint16_t &length, uint32_t timeoutMs)
+{
+  uint8_t header[9];
+  uint16_t idx = 0;
+  uint16_t wireLength = 0;
+  uint16_t sum = 0;
+  uint8_t type = 0;
+  uint8_t checksum[2];
+  unsigned long start = millis();
+  length = 0;
+
+  while (true)
+  {
+    if (!mySerial.available())
+    {
+      if (millis() - start > timeoutMs)
+        return -1;
+      delay(1);
+      continue;
+    }
+    uint8_t b = mySerial.read();
+    if (idx < 9)
+    {
+      if ((idx == 0 && b != 0xEF) || (idx == 1 && b != 0x01))
+      {
+        idx = 0; // resync on start code
+        continue;
+      }
+      header[idx++] = b;
+      if (idx == 9)
+      {
+        type = header[6];
+        wireLength = ((uint16_t)header[7] << 8) | header[8];
+        if (wireLength < 2 || wireLength - 2 > maxLength)
+          return -1;
+        sum = type + header[7] + header[8];
+      }
+    }
+    else if (idx < 9 + wireLength - 2)
+    {
+      payload[idx - 9] = b;
+      sum += b;
+      idx++;
+    }
+    else
+    {
+      checksum[idx - (9 + wireLength - 2)] = b;
+      idx++;
+      if (idx == 9 + wireLength)
+      {
+        if ((((uint16_t)checksum[0] << 8) | checksum[1]) != sum)
+          return -1;
+        length = wireLength - 2;
+        return type;
+      }
+    }
+  }
+}
+
+// reads the bitmap of used template slots ("ReadIndexTable", 32 bytes per 256 slots)
+bool FingerprintManager::readIndexTable(bool *occupied, uint16_t slots)
+{
+  for (uint16_t i = 0; i < slots; i++)
+    occupied[i] = false;
+
+  for (uint8_t page = 0; page * 256 < slots; page++)
+  {
+    uint8_t command[2] = {0x1F, page};
+    uint8_t response[40];
+    uint16_t length;
+    flushInput();
+    writeRawPacket(FINGERPRINT_COMMANDPACKET, command, sizeof(command));
+    if (readRawPacket(response, sizeof(response), length, 1000) != FINGERPRINT_ACKPACKET || length < 33 || response[0] != FINGERPRINT_OK)
+      return false;
+    for (uint16_t byteIdx = 0; byteIdx < 32; byteIdx++)
+    {
+      for (uint8_t bit = 0; bit < 8; bit++)
+      {
+        uint16_t slot = page * 256 + byteIdx * 8 + bit;
+        if (slot < slots && (response[1 + byteIdx] & (1 << bit)))
+          occupied[slot] = true;
+      }
+    }
+  }
+  return true;
+}
+
+// loads a template from the sensor flash into char buffer 1 and transfers it to the ESP ("UpChar")
+int FingerprintManager::readTemplate(uint16_t id, uint8_t *buffer, size_t bufferSize)
+{
+  flushInput();
+  if (finger.loadModel(id) != FINGERPRINT_OK)
+    return -1;
+
+  uint8_t command[2] = {FINGERPRINT_UPLOAD, 0x01};
+  uint8_t packet[300];
+  uint16_t length;
+  flushInput();
+  writeRawPacket(FINGERPRINT_COMMANDPACKET, command, sizeof(command));
+  if (readRawPacket(packet, sizeof(packet), length, 1000) != FINGERPRINT_ACKPACKET || length < 1 || packet[0] != FINGERPRINT_OK)
+    return -1;
+
+  size_t total = 0;
+  while (true)
+  {
+    int type = readRawPacket(packet, sizeof(packet), length, 1000);
+    if (type != FINGERPRINT_DATAPACKET && type != FINGERPRINT_ENDDATAPACKET)
+      return -1;
+    if (total + length > bufferSize)
+      return -1;
+    memcpy(buffer + total, packet, length);
+    total += length;
+    if (type == FINGERPRINT_ENDDATAPACKET)
+      return total;
+  }
+}
+
+// transfers a template to char buffer 1 ("DownChar") and stores it in the given slot
+bool FingerprintManager::writeTemplate(uint16_t id, const uint8_t *data, size_t length)
+{
+  uint8_t command[2] = {0x09, 0x01};
+  uint8_t response[16];
+  uint16_t responseLength;
+  flushInput();
+  writeRawPacket(FINGERPRINT_COMMANDPACKET, command, sizeof(command));
+  if (readRawPacket(response, sizeof(response), responseLength, 1000) != FINGERPRINT_ACKPACKET || responseLength < 1 || response[0] != FINGERPRINT_OK)
+    return false;
+
+  uint16_t chunk = finger.packet_len;
+  if (chunk == 0 || chunk > 256)
+    chunk = 128;
+  size_t offset = 0;
+  while (offset < length)
+  {
+    uint16_t n = (length - offset > chunk) ? chunk : (length - offset);
+    bool last = (offset + n >= length);
+    writeRawPacket(last ? FINGERPRINT_ENDDATAPACKET : FINGERPRINT_DATAPACKET, data + offset, n);
+    offset += n;
+  }
+  mySerial.flush(); // wait until everything is sent
+  delay(50);
+  flushInput(); // the Adafruit functions don't discard unexpected bytes, so make sure the store answer is the next packet
+
+  return finger.storeModel(id) == FINGERPRINT_OK;
+}
+
+void FingerprintManager::setFingerName(int id, const String &name)
+{
+  if ((id > 0) && (id <= 200))
+  {
+    fingerList[id] = name;
+    Preferences preferences;
+    preferences.begin("fingerList", false);
+    preferences.putString(String(id).c_str(), name);
+    preferences.end();
+  }
 }
 
 void FingerprintManager::configTouchRingActive(uint8_t color, uint8_t sequence, uint8_t scanColor, uint8_t matchColor)

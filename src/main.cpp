@@ -11,6 +11,9 @@
 #include <PubSubClient.h>
 #include "FingerprintManager.h"
 #include "SettingsManager.h"
+#include "EventLog.h"
+#include "AccessControl.h"
+#include "BackupManager.h"
 #include "global.h"
 
 enum class Mode
@@ -18,10 +21,12 @@ enum class Mode
   scan,
   enroll,
   wificonfig,
-  maintenance
+  maintenance,
+  backup,
+  restore
 };
 
-const char *VersionInfo = "0.6";
+const char *VersionInfo = "0.7";
 
 // ===================================================================================================================
 // Caution: below are not the credentials for connecting to your home network, they are for the Access Point mode!!!
@@ -47,7 +52,8 @@ bool customInput1Value = false;
 bool customInput2Value = false;
 #endif
 
-const int logMessagesCount = 5;
+const int logMessagesCount = 50;      // kept in RAM, shown on the log page
+const int logPanelMessagesCount = 5;  // shown in the log panel on top of every page
 String logMessages[logMessagesCount]; // log messages, 0=most recent log message
 bool shouldReboot = false;
 unsigned long wifiReconnectPreviousMillis = 0;
@@ -59,7 +65,25 @@ Mode currentMode = Mode::scan;
 
 FingerprintManager fingerManager;
 SettingsManager settingsManager;
+EventLog eventLog;
+AccessControl accessControl;
+BackupManager backupManager;
 bool needMaintenanceMode = false;
+bool restoreClearFirst = false;
+volatile bool backupRequested = false;  // set by the web server, executed by the loop task
+volatile bool restoreRequested = false;
+volatile bool clearEventsRequested = false;
+
+// ring spam protection, night mode, radar
+unsigned long lastRingMillis = 0;
+bool ringEverHappened = false;
+bool nightModeActive = false;
+bool presenceDetected = false;
+bool lastPublishedPresence = false;
+unsigned long presenceChangeMillis = 0;
+unsigned long lastInfoPublishMillis = 0;
+unsigned long lastNightCheckMillis = 0;
+unsigned long accessDeniedMillis = 0; // accessDenied topic is reset after 3s
 
 const byte DNS_PORT = 53;
 DNSServer dnsServer;
@@ -94,6 +118,27 @@ unsigned long wifiLostCount = 0;
 
 Match lastMatch;
 
+// fixed sub topics (below the root topic) of the newer features
+#define TOPIC_LOCKOUT "lockout"
+#define TOPIC_PRESENCE "presence"
+#define TOPIC_NIGHTMODE "nightMode"
+#define TOPIC_ACCESS_DENIED "accessDenied"
+#define TOPIC_LAST_EVENT "lastEvent"
+#define TOPIC_ENROLL "enroll"
+#define TOPIC_ENROLL_STATE "enrollState"
+#define TOPIC_INFO "info"
+
+// GPIOs that can be used for the radar sensor (not used by the sensor UART, touch ring, outputs or flash)
+const int8_t radarPinCandidates[] = {4, 13, 14, 25, 26, 27, 32, 33, 34, 35, 36, 39};
+
+String getFingerListHtml();
+String mqttTopic(const String &subTopic);
+String minutesToTimeString(uint16_t minutes);
+uint16_t timeStringToMinutes(const String &text, uint16_t defaultValue);
+bool isRadarPinAllowed(int pin);
+String getRadarPinOptionsHtml();
+void updateLedSuppression();
+
 void addLogMessage(const String &message)
 {
   // shift all messages in array by 1, oldest message will die
@@ -102,25 +147,27 @@ void addLogMessage(const String &message)
   logMessages[0] = message;
 }
 
-String getLogMessagesAsHtml()
+String htmlEscape(const String &text);
+
+String getLogMessagesAsHtml(int count = logPanelMessagesCount)
 {
   String html = "";
-  for (int i = logMessagesCount - 1; i >= 0; i--)
+  for (int i = count - 1; i >= 0; i--)
   {
     if (logMessages[i] != "")
-      html = html + logMessages[i] + "<br>";
+      html = html + htmlEscape(logMessages[i]) + "<br>";
   }
   return html;
 }
 
 String getTimestampString()
 {
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo))
-  {
-    Serial.println("Failed to obtain time");
+  // getLocalTime() would block for 5s while the time is not synchronized, so check the time directly
+  time_t now = time(nullptr);
+  if (now < 1600000000)
     return "no time";
-  }
+  struct tm timeinfo;
+  localtime_r(&now, &timeinfo);
 
   char buffer[25];
   strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S %Z", &timeinfo);
@@ -404,7 +451,7 @@ String processor(const String &var)
   }
   else if (var == "FINGERLIST")
   {
-    return fingerManager.getFingerListAsHtmlOptionList();
+    return getFingerListHtml();
   }
   else if (var == "HOSTNAME")
   {
@@ -625,6 +672,88 @@ String processor(const String &var)
   {
     return htmlEscape(settingsManager.getAppSettings().topicOpenDoor);
   }
+  else if (var == "LOGMESSAGES_FULL")
+  {
+    return getLogMessagesAsHtml(logMessagesCount);
+  }
+  else if (var == "EVENTLIST")
+  {
+    return eventLog.getEventsAsHtmlTable();
+  }
+  else if (var == "LOCKOUT_STATUS")
+  {
+    if (accessControl.isLockedOut())
+      return String("<span class=\"label label-danger\">Lockout active, ") + accessControl.getLockoutRemainingSeconds() + "s left</span>";
+    return String("<span class=\"label label-success\">No lockout</span> ") + accessControl.getRecentFailures() + " recent failed attempts";
+  }
+  else if (var == "FINGER_COUNT")
+  {
+    return String(fingerManager.getFingerCount());
+  }
+  else if (var == "MQTT_ENROLL")
+  {
+    return settingsManager.getAppSettings().mqttEnroll ? Checked : "";
+  }
+  else if (var == "FAIL_MAX")
+  {
+    return String(settingsManager.getAppSettings().failMax);
+  }
+  else if (var == "FAIL_WINDOW")
+  {
+    return String(settingsManager.getAppSettings().failWindow);
+  }
+  else if (var == "LOCKOUT_TIME")
+  {
+    return String(settingsManager.getAppSettings().lockoutTime);
+  }
+  else if (var == "RING_COOLDOWN")
+  {
+    return String(settingsManager.getAppSettings().ringCooldown);
+  }
+  else if (var == "NIGHT_ENABLED")
+  {
+    return settingsManager.getAppSettings().nightEnabled ? Checked : "";
+  }
+  else if (var == "NIGHT_START")
+  {
+    return minutesToTimeString(settingsManager.getAppSettings().nightStart);
+  }
+  else if (var == "NIGHT_END")
+  {
+    return minutesToTimeString(settingsManager.getAppSettings().nightEnd);
+  }
+  else if (var == "NIGHT_STATUS")
+  {
+    if (!settingsManager.getAppSettings().nightEnabled)
+      return "disabled";
+    return nightModeActive ? "active now" : "not active now";
+  }
+  else if (var == "RADAR_ENABLED")
+  {
+    return settingsManager.getAppSettings().radarEnabled ? Checked : "";
+  }
+  else if (var == "RADAR_PIN_OPTIONS")
+  {
+    return getRadarPinOptionsHtml();
+  }
+  else if (var == "RADAR_HIGH_SELECTED")
+  {
+    return settingsManager.getAppSettings().radarActiveHigh ? Selected : "";
+  }
+  else if (var == "RADAR_LOW_SELECTED")
+  {
+    return settingsManager.getAppSettings().radarActiveHigh ? "" : Selected;
+  }
+  else if (var == "RADAR_LED_WAKE")
+  {
+    return settingsManager.getAppSettings().radarLedWake ? Checked : "";
+  }
+  else if (var == "RADAR_STATUS")
+  {
+    if (!settingsManager.getAppSettings().radarEnabled)
+      return "disabled";
+    return presenceDetected ? "somebody detected" : "nobody detected";
+  }
   else if (var == "HA_DISCOVERY")
   {
     return settingsManager.getAppSettings().haDiscovery ? Checked : "";
@@ -756,6 +885,7 @@ void notifyClients(String message)
   Serial.println(messageWithTimestamp);
   addLogMessage(messageWithTimestamp);
   events.send(getLogMessagesAsHtml().c_str(), "message", millis(), 1000);
+  events.send(htmlEscape(messageWithTimestamp).c_str(), "logline", millis(), 1000); // used by the log page
 
   if (settingsManager.getAppSettings().mqttPublishLog)
     mqttClient.publish(mqttTopic(settingsManager.getAppSettings().topicLastLog).c_str(), message.c_str());
@@ -864,6 +994,16 @@ void initWiFiAccessPointForConfiguration()
   Serial.println(WifiConfigIp);
 }
 
+// checks the web password, requests authentication if needed
+bool isAuthorized(AsyncWebServerRequest *request)
+{
+  const String &password = settingsManager.getAppSettings().webPassword;
+  if (password.isEmpty() || request->authenticate(webServerUser, password.c_str()))
+    return true;
+  request->requestAuthentication();
+  return false;
+}
+
 void startWebserver()
 {
 
@@ -873,6 +1013,7 @@ void startWebserver()
     Serial.println("An Error has occurred while mounting SPIFFS");
     return;
   }
+  eventLog.begin();
 
   // Init time by NTP Client
   // SNTP only stores the pointer to the server name, so it must not point into a temporary copy of the settings
@@ -1021,6 +1162,18 @@ void startWebserver()
           settings.timezoneName = timezoneSelection;
           settings.timezone = resolveTimezone(timezoneSelection);
         }
+        settings.failMax = constrain(request->arg("fail_max").toInt(), 0, 30);
+        settings.failWindow = constrain(request->arg("fail_window").toInt(), 10, 3600);
+        settings.lockoutTime = constrain(request->arg("lockout_time").toInt(), 10, 43200);
+        settings.ringCooldown = constrain(request->arg("ring_cooldown").toInt(), 0, 600);
+        settings.nightEnabled = request->hasArg("night_enabled");
+        settings.nightStart = timeStringToMinutes(request->arg("night_start"), 22 * 60) % 1440;
+        settings.nightEnd = timeStringToMinutes(request->arg("night_end"), 6 * 60) % 1440;
+        settings.radarEnabled = request->hasArg("radar_enabled");
+        if (isRadarPinAllowed(request->arg("radar_pin").toInt()))
+          settings.radarPin = request->arg("radar_pin").toInt();
+        settings.radarActiveHigh = request->arg("radar_level") != "low";
+        settings.radarLedWake = request->hasArg("radar_led_wake");
         settings.touchRingActiveColor = request->arg("touchRingActiveColor").toInt();
         settings.touchRingActiveSequence = request->arg("touchRingActiveSequence").toInt();
         settings.scanColor = request->arg("scanColor").toInt();
@@ -1086,12 +1239,152 @@ void startWebserver()
         settings.topicLedRing = sanitizeTopic(request->arg("t_ledRing"), "ledRing");
         settings.topicOpenDoor = sanitizeTopic(request->arg("t_openDoor"), "openDoor");
         settings.haDiscovery = request->hasArg("ha_discovery");
+        settings.mqttEnroll = request->hasArg("mqtt_enroll");
         settingsManager.saveAppSettings(settings);
         request->redirect("/");
         shouldReboot = true;
       } else {
         request->send(SPIFFS, "/mqtt.html", String(), false, processor);
       } });
+
+    webServer.on("/log", HTTP_GET, [](AsyncWebServerRequest *request)
+                 {
+      if (!isAuthorized(request))
+        return;
+      request->send(SPIFFS, "/log.html", String(), false, processor); });
+
+    webServer.on("/log/clear", HTTP_GET | HTTP_POST, [](AsyncWebServerRequest *request)
+                 {
+      if (!isAuthorized(request))
+        return;
+      if (request->hasArg("btnClearEvents"))
+        clearEventsRequested = true;
+      request->redirect("/log"); });
+
+    // access schedule of one finger
+    webServer.on("/access", HTTP_GET | HTTP_POST, [](AsyncWebServerRequest *request)
+                 {
+      if (!isAuthorized(request))
+        return;
+      int id = request->arg("accessFingerId").toInt();
+      if (id >= 1 && id <= 200 && request->hasArg("btnSaveAccess"))
+      {
+        FingerSchedule schedule;
+        if (request->arg("accessMode") == "restricted")
+        {
+          schedule.days = 0;
+          for (int day = 0; day < 7; day++)
+          {
+            if (request->hasArg((String("day") + day).c_str()))
+              schedule.days |= (1 << day);
+          }
+          schedule.from = timeStringToMinutes(request->arg("accessFrom"), 0);
+          schedule.to = timeStringToMinutes(request->arg("accessTo"), 1440);
+          if (schedule.to == 0)
+            schedule.to = 1440; // "00:00" as end means end of the day
+        }
+        else if (request->arg("accessMode") == "disabled")
+          schedule.days = 0;
+        accessControl.setSchedule(id, schedule);
+        String text = AccessControl::scheduleToString(schedule);
+        notifyClients(String("Access times for #") + id + ": " + (text.isEmpty() ? String("always") : text));
+        updateClientsFingerlist(getFingerListHtml());
+      }
+      request->redirect("/"); });
+
+    // backup and restore of the fingerprint templates
+    webServer.on("/backup/create", HTTP_GET | HTTP_POST, [](AsyncWebServerRequest *request)
+                 {
+      if (!isAuthorized(request))
+        return;
+      if (backupManager.getState() == BackupManager::State::running || currentMode != Mode::scan)
+      {
+        request->send(409, "application/json", "{\"state\":\"error\",\"message\":\"Device is busy, try again later.\"}");
+        return;
+      }
+      backupManager.setRunning("Waiting for the sensor...");
+      backupRequested = true;
+      request->send(200, "application/json", backupManager.getStatusJson()); });
+
+    webServer.on("/backup/status", HTTP_GET, [](AsyncWebServerRequest *request)
+                 {
+      if (!isAuthorized(request))
+        return;
+      request->send(200, "application/json", backupManager.getStatusJson()); });
+
+    webServer.on("/backup/download", HTTP_GET, [](AsyncWebServerRequest *request)
+                 {
+      if (!isAuthorized(request))
+        return;
+      if (!SPIFFS.exists(BackupManager::BackupFile))
+      {
+        request->send(404, "text/plain", "No backup available, please create one first.");
+        return;
+      }
+      String fileName = "fingerprints-" + settingsManager.getWifiSettings().hostname;
+      time_t now = time(nullptr);
+      if (now > 1600000000)
+      {
+        struct tm timeinfo;
+        localtime_r(&now, &timeinfo);
+        char buffer[16];
+        strftime(buffer, sizeof(buffer), "-%Y%m%d", &timeinfo);
+        fileName += buffer;
+      }
+      fileName += ".fpdb";
+      AsyncWebServerResponse *response = request->beginResponse(SPIFFS, BackupManager::BackupFile, "application/octet-stream");
+      response->addHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
+      request->send(response); });
+
+    webServer.on(
+        "/backup/restore", HTTP_POST,
+        [](AsyncWebServerRequest *request)
+        {
+          if (!isAuthorized(request))
+            return;
+          if (backupManager.getState() == BackupManager::State::running || currentMode != Mode::scan)
+          {
+            request->send(409, "application/json", "{\"state\":\"error\",\"message\":\"Device is busy, try again later.\"}");
+            return;
+          }
+          File file = SPIFFS.open(BackupManager::RestoreFile, "r");
+          size_t size = file ? file.size() : 0;
+          if (file)
+            file.close();
+          if (size < 7)
+          {
+            request->send(400, "application/json", "{\"state\":\"error\",\"message\":\"Upload failed or file is empty.\"}");
+            return;
+          }
+          restoreClearFirst = request->hasArg("clearFirst");
+          backupManager.setRunning("Waiting for the sensor...");
+          restoreRequested = true;
+          request->send(200, "application/json", backupManager.getStatusJson());
+        },
+        [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final)
+        {
+          // upload handler: store the file in SPIFFS, the restore itself is done by the loop task
+          const String &password = settingsManager.getAppSettings().webPassword;
+          if (!password.isEmpty() && !request->authenticate(webServerUser, password.c_str()))
+            return;
+          if (index == 0)
+          {
+            if (request->_tempFile)
+              request->_tempFile.close();
+            request->_tempFile = SPIFFS.open(BackupManager::RestoreFile, "w");
+          }
+          if (!request->_tempFile)
+            return;
+          if (index + len > 600000) // 200 templates are about 350kB
+          {
+            request->_tempFile.close();
+            SPIFFS.remove(BackupManager::RestoreFile);
+            return;
+          }
+          request->_tempFile.write(data, len);
+          if (final)
+            request->_tempFile.close();
+        });
 
     webServer.on("/system", HTTP_GET, [](AsyncWebServerRequest *request)
                  {
@@ -1203,6 +1496,246 @@ void startWebserver()
   notifyClients("System booted successfully!");
 }
 
+// finger list for the web UI, including the access schedule (data attributes are used by the forms on the index page)
+String getFingerListHtml()
+{
+  String html;
+  bool first = true;
+  for (int i = 1; i <= 200; i++)
+  {
+    if (!fingerManager.hasFinger(i))
+      continue;
+    FingerSchedule schedule = accessControl.getSchedule(i);
+    String name = fingerManager.getFingerName(i);
+    String label = String(i) + " - " + name;
+    String scheduleText = AccessControl::scheduleToString(schedule);
+    if (!scheduleText.isEmpty())
+      label += " [" + scheduleText + "]";
+    html += String("<option value=\"") + i + "\"" + (first ? " selected" : "") +
+            " data-name=\"" + htmlEscape(name) + "\" data-days=\"" + schedule.days + "\" data-from=\"" + schedule.from + "\" data-to=\"" + schedule.to + "\">" +
+            htmlEscape(label) + "</option>";
+    first = false;
+  }
+  return html;
+}
+
+String minutesToTimeString(uint16_t minutes)
+{
+  char buffer[6];
+  snprintf(buffer, sizeof(buffer), "%02u:%02u", (minutes / 60) % 24, minutes % 60);
+  return String(buffer);
+}
+
+// "HH:MM" -> minutes since midnight, "24:00" is allowed as end of day
+uint16_t timeStringToMinutes(const String &text, uint16_t defaultValue)
+{
+  int colon = text.indexOf(':');
+  if (colon < 1)
+    return defaultValue;
+  int hours = text.substring(0, colon).toInt();
+  int minutes = text.substring(colon + 1).toInt();
+  if (hours < 0 || hours > 24 || minutes < 0 || minutes > 59 || (hours == 24 && minutes != 0))
+    return defaultValue;
+  return hours * 60 + minutes;
+}
+
+bool isRadarPinAllowed(int pin)
+{
+  for (int8_t candidate : radarPinCandidates)
+  {
+#ifdef CUSTOM_GPIOS
+    if (candidate == customOutput2)
+      continue;
+#endif
+    if (candidate == pin)
+      return true;
+  }
+  return false;
+}
+
+String getRadarPinOptionsHtml()
+{
+  String html;
+  for (int8_t candidate : radarPinCandidates)
+  {
+    if (!isRadarPinAllowed(candidate))
+      continue;
+    html += String("<option value=\"") + candidate + "\"" + (settingsManager.getAppSettings().radarPin == candidate ? " selected" : "") + ">GPIO " + candidate +
+            (candidate >= 34 ? " (input only)" : "") + "</option>";
+  }
+  return html;
+}
+
+void publishOnOff(const char *subTopic, bool state, bool retain = true)
+{
+  mqttClient.publish(mqttTopic(subTopic).c_str(), onOffPayload(state), retain);
+}
+
+void publishLastEvent()
+{
+  mqttClient.publish(mqttTopic(TOPIC_LAST_EVENT).c_str(), eventLog.getLastEventAsText().c_str(), true);
+}
+
+// adds an event to the persistent log and publishes it as "last event"
+void logEvent(EventType type, uint16_t fingerId = 0, uint16_t confidence = 0, const String &text = "")
+{
+  eventLog.add(type, fingerId, confidence, text);
+  publishLastEvent();
+}
+
+void onEnrollProgress(const String &state)
+{
+  mqttClient.publish(mqttTopic(TOPIC_ENROLL_STATE).c_str(), state.c_str(), true);
+}
+
+// diagnostic values for Home Assistant / ioBroker, published every 60s
+void publishInfo()
+{
+  String t = mqttTopic(TOPIC_INFO) + "/";
+  mqttClient.publish((t + "rssi").c_str(), String(WiFi.RSSI()).c_str(), true);
+  mqttClient.publish((t + "uptime").c_str(), String(millis() / 1000).c_str(), true);
+  mqttClient.publish((t + "ip").c_str(), WiFi.localIP().toString().c_str(), true);
+  mqttClient.publish((t + "freeHeap").c_str(), String(ESP.getFreeHeap()).c_str(), true);
+  mqttClient.publish((t + "fingerCount").c_str(), String(fingerManager.getFingerCount()).c_str(), true);
+  mqttClient.publish((t + "failedAttempts").c_str(), String(accessControl.getRecentFailures()).c_str(), true);
+  mqttClient.publish((t + "wifiLost").c_str(), String(wifiLostCount).c_str(), true);
+  mqttClient.publish((t + "mqttLost").c_str(), String(mqttLostCount).c_str(), true);
+  mqttClient.publish((t + "version").c_str(), VersionInfo, true);
+  lastInfoPublishMillis = millis();
+}
+
+// states of the newer features, published on (re)connect
+void publishFeatureStates()
+{
+  publishOnOff(TOPIC_LOCKOUT, accessControl.isLockedOut());
+  publishOnOff(TOPIC_NIGHTMODE, nightModeActive);
+  if (settingsManager.getAppSettings().radarEnabled)
+    publishOnOff(TOPIC_PRESENCE, presenceDetected);
+  mqttClient.publish(mqttTopic(TOPIC_ACCESS_DENIED).c_str(), "", true);
+  mqttClient.publish(mqttTopic(TOPIC_ENROLL_STATE).c_str(), "idle", true);
+  publishLastEvent();
+  publishInfo();
+}
+
+// LED ring idle state depends on night mode and radar presence
+void updateLedSuppression()
+{
+  const AppSettings &settings = settingsManager.getAppSettings();
+  bool suppressed = nightModeActive || (settings.radarEnabled && settings.radarLedWake && !presenceDetected);
+  fingerManager.setLedRingSuppressed(suppressed);
+}
+
+void updateNightMode()
+{
+  const AppSettings &settings = settingsManager.getAppSettings();
+  bool active = false;
+  int weekday, minutes;
+  if (settings.nightEnabled && AccessControl::getLocalMinutes(weekday, minutes))
+  {
+    if (settings.nightStart <= settings.nightEnd)
+      active = (minutes >= settings.nightStart && minutes < settings.nightEnd);
+    else
+      active = (minutes >= settings.nightStart || minutes < settings.nightEnd); // over midnight
+  }
+  if (active != nightModeActive)
+  {
+    nightModeActive = active;
+    notifyClients(active ? "Night mode started, LED ring is off." : "Night mode ended.");
+    publishOnOff(TOPIC_NIGHTMODE, active);
+    updateLedSuppression();
+  }
+}
+
+void updateRadar()
+{
+  const AppSettings &settings = settingsManager.getAppSettings();
+  if (!settings.radarEnabled || !isRadarPinAllowed(settings.radarPin))
+    return;
+  bool level = digitalRead(settings.radarPin) == HIGH;
+  bool present = settings.radarActiveHigh ? level : !level;
+  if (present != presenceDetected)
+  {
+    // debounce: the new state has to be stable for 300ms
+    if (presenceChangeMillis == 0)
+      presenceChangeMillis = millis();
+    else if (millis() - presenceChangeMillis >= 300)
+    {
+      presenceDetected = present;
+      presenceChangeMillis = 0;
+      Serial.println(present ? "Presence detected" : "Presence cleared");
+      publishOnOff(TOPIC_PRESENCE, present);
+      updateLedSuppression();
+    }
+  }
+  else
+    presenceChangeMillis = 0;
+}
+
+// starts an enrollment requested over MQTT, payload "5", "5:Name" or {"id":5,"name":"Name"}
+void handleMqttEnroll(const String &payload)
+{
+  if (!settingsManager.getAppSettings().mqttEnroll)
+  {
+    notifyClients("Enrollment over MQTT is disabled (see MQTT settings).");
+    return;
+  }
+  if (currentMode != Mode::scan)
+  {
+    onEnrollProgress("busy");
+    return;
+  }
+
+  String text = payload;
+  text.trim();
+  String id, name;
+  if (text.startsWith("{"))
+  {
+    int idPos = text.indexOf("\"id\"");
+    if (idPos >= 0)
+    {
+      int colon = text.indexOf(':', idPos);
+      if (colon > 0)
+        id = String(text.substring(colon + 1).toInt());
+    }
+    int namePos = text.indexOf("\"name\"");
+    if (namePos >= 0)
+    {
+      int start = text.indexOf('"', text.indexOf(':', namePos) + 1);
+      int end = text.indexOf('"', start + 1);
+      if (start > 0 && end > start)
+        name = text.substring(start + 1, end);
+    }
+  }
+  else
+  {
+    int separator = -1;
+    for (unsigned int i = 0; i < text.length(); i++)
+    {
+      char c = text.charAt(i);
+      if (c == ':' || c == ';' || c == ',')
+      {
+        separator = i;
+        break;
+      }
+    }
+    id = separator >= 0 ? text.substring(0, separator) : text;
+    name = separator >= 0 ? text.substring(separator + 1) : "";
+    id.trim();
+    name.trim();
+  }
+
+  int idValue = id.toInt();
+  if (idValue < 1 || idValue > 200)
+  {
+    notifyClients("Enrollment over MQTT: invalid id in '" + payload + "', expected e.g. '5:Name'.");
+    onEnrollProgress("failed: invalid id");
+    return;
+  }
+  enrollId = String(idValue);
+  enrollName = name;
+  currentMode = Mode::enroll;
+}
+
 // publish the current state of all switchable options (retained, so the state is also known after a restart of the home automation)
 void publishSwitchStates()
 {
@@ -1279,6 +1812,55 @@ void publishHaDiscovery()
   publishHaDiscoveryEntity("button", "open_door", nodeId,
                            "\"name\":\"Open door\",\"icon\":\"mdi:door-open\"," + jsonTopic("command_topic", settings.topicOpenDoor) + ",\"payload_press\":\"" + jsonEscape(settings.payloadOn) + "\"",
                            device, enabled);
+
+  // newer features
+  String diag = ",\"entity_category\":\"diagnostic\"";
+  publishHaDiscoveryEntity("binary_sensor", "lockout", nodeId,
+                           "\"name\":\"Lockout\",\"icon\":\"mdi:shield-lock\",\"device_class\":\"problem\"," + jsonTopic("state_topic", TOPIC_LOCKOUT) + onOff,
+                           device, enabled);
+  publishHaDiscoveryEntity("binary_sensor", "presence", nodeId,
+                           "\"name\":\"Presence\",\"device_class\":\"occupancy\"," + jsonTopic("state_topic", TOPIC_PRESENCE) + onOff,
+                           device, enabled && settings.radarEnabled);
+  publishHaDiscoveryEntity("binary_sensor", "night_mode", nodeId,
+                           "\"name\":\"Night mode\",\"icon\":\"mdi:weather-night\"," + jsonTopic("state_topic", TOPIC_NIGHTMODE) + onOff,
+                           device, enabled);
+  publishHaDiscoveryEntity("sensor", "access_denied", nodeId,
+                           "\"name\":\"Access denied\",\"icon\":\"mdi:account-cancel\"," + jsonTopic("state_topic", TOPIC_ACCESS_DENIED),
+                           device, enabled);
+  publishHaDiscoveryEntity("sensor", "last_event", nodeId,
+                           "\"name\":\"Last event\",\"icon\":\"mdi:history\"," + jsonTopic("state_topic", TOPIC_LAST_EVENT),
+                           device, enabled);
+  publishHaDiscoveryEntity("text", "enroll", nodeId,
+                           "\"name\":\"Enroll finger (id:name)\",\"icon\":\"mdi:fingerprint\",\"entity_category\":\"config\",\"max\":64," + jsonTopic("command_topic", TOPIC_ENROLL),
+                           device, enabled && settings.mqttEnroll);
+  publishHaDiscoveryEntity("sensor", "enroll_state", nodeId,
+                           "\"name\":\"Enroll state\",\"icon\":\"mdi:fingerprint\"," + jsonTopic("state_topic", TOPIC_ENROLL_STATE),
+                           device, enabled && settings.mqttEnroll);
+  String info = String(TOPIC_INFO) + "/";
+  publishHaDiscoveryEntity("sensor", "rssi", nodeId,
+                           "\"name\":\"WiFi signal\",\"device_class\":\"signal_strength\",\"unit_of_measurement\":\"dBm\",\"state_class\":\"measurement\"" + diag + "," + jsonTopic("state_topic", info + "rssi"),
+                           device, enabled);
+  publishHaDiscoveryEntity("sensor", "uptime", nodeId,
+                           "\"name\":\"Uptime\",\"device_class\":\"duration\",\"unit_of_measurement\":\"s\",\"state_class\":\"total_increasing\"" + diag + "," + jsonTopic("state_topic", info + "uptime"),
+                           device, enabled);
+  publishHaDiscoveryEntity("sensor", "ip", nodeId,
+                           "\"name\":\"IP address\",\"icon\":\"mdi:ip-network\"" + diag + "," + jsonTopic("state_topic", info + "ip"),
+                           device, enabled);
+  publishHaDiscoveryEntity("sensor", "free_heap", nodeId,
+                           "\"name\":\"Free memory\",\"icon\":\"mdi:memory\",\"unit_of_measurement\":\"B\",\"state_class\":\"measurement\",\"enabled_by_default\":false" + diag + "," + jsonTopic("state_topic", info + "freeHeap"),
+                           device, enabled);
+  publishHaDiscoveryEntity("sensor", "finger_count", nodeId,
+                           "\"name\":\"Stored fingerprints\",\"icon\":\"mdi:fingerprint\",\"state_class\":\"measurement\"" + diag + "," + jsonTopic("state_topic", info + "fingerCount"),
+                           device, enabled);
+  publishHaDiscoveryEntity("sensor", "failed_attempts", nodeId,
+                           "\"name\":\"Failed attempts\",\"icon\":\"mdi:fingerprint-off\",\"state_class\":\"measurement\"" + diag + "," + jsonTopic("state_topic", info + "failedAttempts"),
+                           device, enabled);
+  publishHaDiscoveryEntity("sensor", "wifi_lost", nodeId,
+                           "\"name\":\"WiFi connection losses\",\"icon\":\"mdi:wifi-off\",\"enabled_by_default\":false" + diag + "," + jsonTopic("state_topic", info + "wifiLost"),
+                           device, enabled);
+  publishHaDiscoveryEntity("sensor", "mqtt_lost", nodeId,
+                           "\"name\":\"MQTT connection losses\",\"icon\":\"mdi:lan-disconnect\",\"enabled_by_default\":false" + diag + "," + jsonTopic("state_topic", info + "mqttLost"),
+                           device, enabled);
 }
 
 void mqttCallback(char *topic, byte *message, unsigned int length)
@@ -1322,6 +1904,15 @@ void mqttCallback(char *topic, byte *message, unsigned int length)
       fingerManager.setLedRingEnabled(false);
     }
     publishSwitchStates();
+  }
+
+  if (topicStr == mqttTopic(TOPIC_ENROLL))
+  {
+    if (!messageTemp.isEmpty())
+    {
+      handleMqttEnroll(messageTemp);
+      mqttClient.publish(mqttTopic(TOPIC_ENROLL).c_str(), "", true); // clear a retained command, so it is not executed again after a reconnect
+    }
   }
 
   if (topicStr == mqttTopic(settingsManager.getAppSettings().topicOpenDoor))
@@ -1389,11 +1980,14 @@ void connectMqttClient()
       mqttClient.subscribe(mqttTopic(settingsManager.getAppSettings().topicIgnoreTouchRing).c_str(), 1); // QoS = 1 (at least once)
       mqttClient.subscribe(mqttTopic(settingsManager.getAppSettings().topicOpenDoor).c_str(), 1); // QoS = 1 (at least once)
       mqttClient.subscribe(mqttTopic(settingsManager.getAppSettings().topicLedRing).c_str(), 1); // QoS = 1 (at least once)
+      if (settingsManager.getAppSettings().mqttEnroll)
+        mqttClient.subscribe(mqttTopic(TOPIC_ENROLL).c_str(), 1);
 #ifdef CUSTOM_GPIOS
       mqttClient.subscribe(mqttTopic("customOutput1").c_str(), 1); // QoS = 1 (at least once)
       mqttClient.subscribe(mqttTopic("customOutput2").c_str(), 1); // QoS = 1 (at least once)
 #endif
       publishSwitchStates();
+      publishFeatureStates();
       publishHaDiscovery();
     }
     else
@@ -1411,6 +2005,32 @@ void connectMqttClient()
   }
 }
 
+void publishMatchReset(const AppSettings &settings, bool retain, bool ring)
+{
+  mqttClient.publish(mqttTopic(settings.topicRing).c_str(), ring ? settings.payloadOn.c_str() : settings.payloadOff.c_str(), retain);
+  mqttClient.publish(mqttTopic(settings.topicMatchId).c_str(), "-1", retain);
+  mqttClient.publish(mqttTopic(settings.topicMatchName).c_str(), "", retain);
+  mqttClient.publish(mqttTopic(settings.topicMatchConfidence).c_str(), "-1", retain);
+}
+
+void startLockout()
+{
+  const AppSettings &settings = settingsManager.getAppSettings();
+  notifyClients(String("Too many failed attempts (") + settings.failMax + " within " + settings.failWindow + "s). Matches are ignored for " + settings.lockoutTime + "s.");
+  logEvent(EventType::lockout, 0, 0, String(settings.failMax) + " failed attempts");
+  fingerManager.setLockout(true);
+  publishOnOff(TOPIC_LOCKOUT, true);
+}
+
+void denyAccess(const Match &match, const String &reason)
+{
+  notifyClients(String("Access denied for ") + match.matchId + " - " + match.matchName + ": " + reason);
+  logEvent(EventType::accessDenied, match.matchId, match.matchConfidence, match.matchName + ": " + reason);
+  mqttClient.publish(mqttTopic(TOPIC_ACCESS_DENIED).c_str(), (match.matchName.isEmpty() ? String(match.matchId) : match.matchName).c_str(), true);
+  accessDeniedMillis = millis();
+  fingerManager.showAccessDenied();
+}
+
 void doScan()
 {
   Match match = fingerManager.scanFingerprint();
@@ -1423,17 +2043,23 @@ void doScan()
     if (match.scanResult != lastMatch.scanResult)
     {
       Serial.println("no finger");
-      mqttClient.publish(mqttTopic(settings.topicRing).c_str(), settings.payloadOff.c_str(), retain);
-      mqttClient.publish(mqttTopic(settings.topicMatchId).c_str(), "-1", retain);
-      mqttClient.publish(mqttTopic(settings.topicMatchName).c_str(), "", retain);
-      mqttClient.publish(mqttTopic(settings.topicMatchConfidence).c_str(), "-1", retain);
+      publishMatchReset(settings, retain, false);
     }
     break;
   case ScanResult::matchFound:
-    notifyClients(String("Match Found: ") + match.matchId + " - " + match.matchName + " with confidence of " + match.matchConfidence);
     if (match.scanResult != lastMatch.scanResult)
     {
-      if (checkPairingValid())
+      notifyClients(String("Match Found: ") + match.matchId + " - " + match.matchName + " with confidence of " + match.matchConfidence);
+      String reason;
+      if (accessControl.isLockedOut())
+      {
+        denyAccess(match, String("lockout active (") + accessControl.getLockoutRemainingSeconds() + "s left)");
+      }
+      else if (!accessControl.isAccessAllowed(match.matchId, reason))
+      {
+        denyAccess(match, reason);
+      }
+      else if (checkPairingValid())
       {
         bool opendoor = false;
         if (match.matchName.endsWith("#"))
@@ -1445,6 +2071,7 @@ void doScan()
         mqttClient.publish(mqttTopic(settings.topicMatchName).c_str(), match.matchName.c_str(), retain);
         mqttClient.publish(mqttTopic(settings.topicMatchConfidence).c_str(), String(match.matchConfidence).c_str(), retain);
         Serial.println("MQTT message sent: Open the door!");
+        logEvent(opendoor ? EventType::doorOpened : EventType::match, match.matchId, match.matchConfidence, match.matchName);
         if (opendoor)
         {
           delay(1000);
@@ -1454,22 +2081,35 @@ void doScan()
       else
       {
         notifyClients("Security issue! Match was not sent by MQTT because of invalid sensor pairing! This could potentially be an attack! If the sensor is new or has been replaced by you do a (re)pairing in settings page.");
+        logEvent(EventType::accessDenied, match.matchId, match.matchConfidence, "invalid sensor pairing");
       }
     }
     delay(3000); // wait some time before next scan to let the LED blink
     break;
   case ScanResult::noMatchFound:
-    notifyClients(String("No Match Found (Code ") + match.returnCode + ")");
     if (match.scanResult != lastMatch.scanResult)
     {
-      digitalWrite(doorbellOutputPin, HIGH);
-      mqttClient.publish(mqttTopic(settings.topicRing).c_str(), settings.payloadOn.c_str(), retain);
-      mqttClient.publish(mqttTopic(settings.topicMatchId).c_str(), "-1", retain);
-      mqttClient.publish(mqttTopic(settings.topicMatchName).c_str(), "", retain);
-      mqttClient.publish(mqttTopic(settings.topicMatchConfidence).c_str(), "-1", retain);
-      Serial.println("MQTT message sent: ring the bell!");
-      delay(1000);
-      digitalWrite(doorbellOutputPin, LOW);
+      // a real finger that is not in the database (in contrast to a touch on the ring only) counts as failed attempt
+      bool unknownFinger = (match.returnCode == FINGERPRINT_NOTFOUND);
+      notifyClients(unknownFinger ? String("No Match Found (unknown finger)") : String("No Match Found (Code ") + match.returnCode + ")");
+      if (unknownFinger && accessControl.recordFailure())
+        startLockout();
+
+      if (settings.ringCooldown > 0 && ringEverHappened && millis() - lastRingMillis < (unsigned long)settings.ringCooldown * 1000UL)
+      {
+        notifyClients(String("Ring suppressed (cooldown of ") + settings.ringCooldown + "s).");
+      }
+      else
+      {
+        lastRingMillis = millis();
+        ringEverHappened = true;
+        digitalWrite(doorbellOutputPin, HIGH);
+        publishMatchReset(settings, retain, true);
+        Serial.println("MQTT message sent: ring the bell!");
+        logEvent(EventType::ring, 0, 0, unknownFinger ? "unknown finger" : "");
+        delay(1000);
+        digitalWrite(doorbellOutputPin, LOW);
+      }
     }
     else
     {
@@ -1489,18 +2129,23 @@ void doEnroll()
   if (id < 1 || id > 200)
   {
     notifyClients("Invalid memory slot id '" + enrollId + "'");
+    onEnrollProgress("failed: invalid id");
     return;
   }
 
+  onEnrollProgress("running");
   NewFinger finger = fingerManager.enrollFinger(id, enrollName);
   if (finger.enrollResult == EnrollResult::ok)
   {
     notifyClients("Enrollment successfull. You can now use your new finger for scanning.");
-    updateClientsFingerlist(fingerManager.getFingerListAsHtmlOptionList());
+    logEvent(EventType::enrolled, id, 0, enrollName);
+    onEnrollProgress(String("success: #") + id);
+    updateClientsFingerlist(getFingerListHtml());
   }
   else if (finger.enrollResult == EnrollResult::error)
   {
     notifyClients(String("Enrollment failed. (Code ") + finger.returnCode + ")");
+    onEnrollProgress(String("failed: code ") + finger.returnCode);
   }
 }
 
@@ -1539,6 +2184,18 @@ void setup()
 
   settingsManager.loadWifiSettings();
   settingsManager.loadAppSettings();
+
+  const AppSettings &appSettings = settingsManager.getAppSettings();
+  accessControl.configure(appSettings.failMax, appSettings.failWindow, appSettings.lockoutTime);
+  accessControl.loadSchedules();
+  if (appSettings.radarEnabled && isRadarPinAllowed(appSettings.radarPin))
+  {
+    // GPIO 34-39 have no internal pull resistors, the LD2410 output is push-pull anyway
+    if (appSettings.radarPin >= 34)
+      pinMode(appSettings.radarPin, INPUT);
+    else
+      pinMode(appSettings.radarPin, appSettings.radarActiveHigh ? INPUT_PULLDOWN : INPUT_PULLUP);
+  }
 
   fingerManager.connect();
 
@@ -1583,10 +2240,12 @@ void setup()
       if (fingerManager.connected)
       {
         fingerManager.configTouchRingActive(settingsManager.getAppSettings().touchRingActiveColor, settingsManager.getAppSettings().touchRingActiveSequence, settingsManager.getAppSettings().scanColor, settingsManager.getAppSettings().matchColor);
+        updateLedSuppression();
         fingerManager.setLedRingReady();
       }
       else
         fingerManager.setLedRingError();
+      logEvent(EventType::boot, 0, 0, String("firmware ") + VersionInfo);
     }
     else
     {
@@ -1648,6 +2307,53 @@ void loop()
       }
       mqttClient.loop();
     }
+
+    // lockout expired?
+    if (accessControl.pollLockoutEnded())
+    {
+      notifyClients("Lockout ended, matches are accepted again.");
+      logEvent(EventType::lockoutEnded);
+      fingerManager.setLockout(false);
+      publishOnOff(TOPIC_LOCKOUT, false);
+    }
+
+    // reset the access denied topic after 3s (like matchId/matchName)
+    if (accessDeniedMillis != 0 && currentMillis - accessDeniedMillis >= 3000ul)
+    {
+      mqttClient.publish(mqttTopic(TOPIC_ACCESS_DENIED).c_str(), "", true);
+      accessDeniedMillis = 0;
+    }
+
+    if (currentMillis - lastNightCheckMillis >= 10000ul)
+    {
+      updateNightMode();
+      lastNightCheckMillis = currentMillis;
+    }
+
+    updateRadar();
+
+    if (mqttClient.connected() && currentMillis - lastInfoPublishMillis >= 60000ul)
+      publishInfo();
+
+    if (clearEventsRequested)
+    {
+      clearEventsRequested = false;
+      eventLog.clear();
+      publishLastEvent();
+      notifyClients("Event history cleared.");
+    }
+
+    // jobs requested by the web server, they need exclusive access to the sensor
+    if (currentMode == Mode::scan && backupRequested)
+    {
+      backupRequested = false;
+      currentMode = Mode::backup;
+    }
+    if (currentMode == Mode::scan && restoreRequested)
+    {
+      restoreRequested = false;
+      currentMode = Mode::restore;
+    }
   }
 
   // do the actual loop work
@@ -1670,6 +2376,23 @@ void loop()
   case Mode::maintenance:
     // do nothing, give webserver exclusive access to sensor (not thread-safe for concurrent calls)
     break;
+
+  case Mode::backup:
+    if (backupManager.createBackup(fingerManager, accessControl))
+      logEvent(EventType::backup, 0, 0, String(backupManager.getProgress()) + " fingerprints");
+    fingerManager.setLedRingReady();
+    currentMode = Mode::scan;
+    break;
+
+  case Mode::restore:
+  {
+    bool ok = backupManager.restoreBackup(fingerManager, accessControl, restoreClearFirst);
+    logEvent(EventType::restore, 0, 0, ok ? String(backupManager.getProgress()) + " fingerprints" : String("failed"));
+    updateClientsFingerlist(getFingerListHtml());
+    fingerManager.setLedRingReady();
+    currentMode = Mode::scan;
+    break;
+  }
   }
 
   // enter maintenance mode (no continous scanning) if requested

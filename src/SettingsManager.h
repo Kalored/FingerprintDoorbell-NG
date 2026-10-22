@@ -36,6 +36,21 @@ struct AppSettings
   String topicIgnoreTouchRing = "ignoreTouchRing";
   String topicLedRing = "ledRing";
   String topicOpenDoor = "openDoor";
+  bool mqttEnroll = false; // allow to start an enrollment over MQTT / Home Assistant
+  // brute force and ring spam protection
+  uint8_t failMax = 8;       // failed attempts within failWindow until lockout, 0 = disabled
+  uint16_t failWindow = 120; // seconds
+  uint16_t lockoutTime = 300; // seconds
+  uint16_t ringCooldown = 0; // seconds between two ring events, 0 = disabled
+  // night mode: idle LED ring off between nightStart and nightEnd (minutes since midnight)
+  bool nightEnabled = false;
+  uint16_t nightStart = 22 * 60;
+  uint16_t nightEnd = 6 * 60;
+  // radar sensor (e.g. HLK-LD2410) connected with its OUT pin
+  bool radarEnabled = false;
+  int8_t radarPin = 32;
+  bool radarActiveHigh = true;
+  bool radarLedWake = false; // idle LED ring only on while somebody is detected
   String ntpServer = "pool.ntp.org";
   String timezone = "CET-1CEST,M3.5.0,M10.5.0/3"; // POSIX TZ string, this is what is applied
   String timezoneName = "Europe/Berlin";              // name selected in the web UI, empty = custom POSIX string

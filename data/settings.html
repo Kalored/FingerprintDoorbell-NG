@@ -18,6 +18,32 @@
 			margin-right: 15px;
 		}
 
+		.collapsible {
+			margin-bottom: 15px;
+		}
+
+		.collapsible summary {
+			cursor: pointer;
+			font-weight: bold;
+			color: #337ab7;
+			margin: 0 0 15px 0;
+			list-style: none;
+		}
+
+		.collapsible summary::-webkit-details-marker {
+			display: none;
+		}
+
+		.collapsible summary::before {
+			content: "\25B8";
+			display: inline-block;
+			width: 1.2em;
+		}
+
+		.collapsible[open] summary::before {
+			content: "\25BE";
+		}
+
 	</style>
 </head>
 
@@ -54,6 +80,7 @@
 				<li><a href="/">Fingerprints</a></li>
 				<li class="active"><a href="#">Settings</a></li>
 				<li><a href="mqtt">MQTT</a></li>
+				<li><a href="log">Log</a></li>
 				<li><a href="system">System</a></li>
 			</ul>
 		</div>
@@ -114,6 +141,9 @@
 					update();
 				})();
 			</script>
+
+			<details class="collapsible">
+				<summary>LED ring &amp; night mode</summary>
 
 			<div class="form-group">
 				<label for="touchRingActiveColor" class="col-md-4 control-label">Touch Ring Active: LED Color</label>
@@ -186,6 +216,118 @@
 				</div>
 			</div>
 
+				<div class="form-group">
+					<label class="col-md-4 control-label" for="night_enabled">Night mode</label>
+					<div class="col-md-4">
+						<div class="checkbox">
+							<label><input type="checkbox" id="night_enabled" name="night_enabled" value="on" %NIGHT_ENABLED%>
+								Switch the LED ring off at night</label>
+						</div>
+						<small class="text-muted">Currently: %NIGHT_STATUS%. Only the idle light is switched off, while scanning
+							the ring still shows its colors. Needs a working time (NTP).</small>
+					</div>
+				</div>
+
+				<div class="form-group">
+					<label class="col-md-4 control-label" for="night_start">Night from / to</label>
+					<div class="col-md-2">
+						<input type="time" id="night_start" name="night_start" class="form-control" value="%NIGHT_START%">
+					</div>
+					<div class="col-md-2">
+						<input type="time" id="night_end" name="night_end" class="form-control" value="%NIGHT_END%">
+					</div>
+				</div>
+			</details>
+
+			<details class="collapsible">
+				<summary>Security</summary>
+
+				<div class="form-group">
+					<label class="col-md-4 control-label" for="fail_max">Failed attempts</label>
+					<div class="col-md-2">
+						<input type="number" id="fail_max" name="fail_max" min="0" max="30" class="form-control"
+							value="%FAIL_MAX%">
+					</div>
+					<div class="col-md-2">
+						<div class="input-group">
+							<span class="input-group-addon">within</span>
+							<input type="number" id="fail_window" name="fail_window" min="10" max="3600" class="form-control"
+								value="%FAIL_WINDOW%">
+							<span class="input-group-addon">s</span>
+						</div>
+					</div>
+					<div class="col-md-4 col-md-offset-4">
+						<small class="text-muted">After this number of unknown fingers within the time window all matches are
+							ignored for the lockout time (protection against trying out fingers). 0 = disabled. Ringing still
+							works during a lockout.</small>
+					</div>
+				</div>
+
+				<div class="form-group">
+					<label class="col-md-4 control-label" for="lockout_time">Lockout time (s)</label>
+					<div class="col-md-4">
+						<input type="number" id="lockout_time" name="lockout_time" min="10" max="43200" class="form-control"
+							value="%LOCKOUT_TIME%">
+						<small class="text-muted">%LOCKOUT_STATUS%</small>
+					</div>
+				</div>
+
+				<div class="form-group">
+					<label class="col-md-4 control-label" for="ring_cooldown">Ring cooldown (s)</label>
+					<div class="col-md-4">
+						<input type="number" id="ring_cooldown" name="ring_cooldown" min="0" max="600" class="form-control"
+							value="%RING_COOLDOWN%">
+						<small class="text-muted">Minimum time between two ring events (protection against ringing again and
+							again). 0 = disabled.</small>
+					</div>
+				</div>
+			</details>
+
+			<details class="collapsible">
+				<summary>Radar sensor</summary>
+
+				<div class="form-group">
+					<label class="col-md-4 control-label" for="radar_enabled">Radar sensor</label>
+					<div class="col-md-4">
+						<div class="checkbox">
+							<label><input type="checkbox" id="radar_enabled" name="radar_enabled" value="on" %RADAR_ENABLED%>
+								Radar sensor connected</label>
+						</div>
+						<small class="text-muted">Currently: %RADAR_STATUS%. For a presence radar like the HLK-LD2410: VCC to 5V,
+							GND to GND, OUT to the GPIO below. Presence is published to MQTT ("presence") and Home Assistant.</small>
+					</div>
+				</div>
+
+				<div class="form-group">
+					<label class="col-md-4 control-label" for="radar_pin">GPIO</label>
+					<div class="col-md-4">
+						<select id="radar_pin" name="radar_pin" class="form-control">
+							%RADAR_PIN_OPTIONS%
+						</select>
+					</div>
+				</div>
+
+				<div class="form-group">
+					<label class="col-md-4 control-label" for="radar_level">Presence signal</label>
+					<div class="col-md-4">
+						<select id="radar_level" name="radar_level" class="form-control">
+							<option value="high" %RADAR_HIGH_SELECTED%>High = presence (LD2410)</option>
+							<option value="low" %RADAR_LOW_SELECTED%>Low = presence</option>
+						</select>
+					</div>
+				</div>
+
+				<div class="form-group">
+					<label class="col-md-4 control-label" for="radar_led_wake">LED ring</label>
+					<div class="col-md-4">
+						<div class="checkbox">
+							<label><input type="checkbox" id="radar_led_wake" name="radar_led_wake" value="on" %RADAR_LED_WAKE%>
+								Switch the LED ring on only when somebody is near the door</label>
+						</div>
+					</div>
+				</div>
+			</details>
+
 			<!-- Button -->
 			<div class="form-group">
 				<label class="col-md-4 control-label" for="btnSaveSettings"></label>
@@ -230,7 +372,7 @@
 		<div class="container-fluid">
 			<p class="navbar-text">FingerprintDoorbell, Version %VERSIONINFO%</p>
 			<p class="navbar-text">%UPTIME%</p>
-			<p class="navbar-text"><a href="https://github.com/geronet1/FingerprintDoorbell" target="_blank">Github</a></p>
+			<p class="navbar-text"><a href="https://github.com/Kalored/FingerprintDoorbell-geronet1" target="_blank">Github</a></p>
 		</div>
 	</nav>
 

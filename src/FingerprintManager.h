@@ -53,7 +53,9 @@ private:
   int fingerCountOnSensor = 0;
   bool ignoreTouchRing = false; // set to true when the sensor is usually exposed to rain to avoid false ring events. Can also be set conditional by a rain sensor over MQTT
   bool lastIgnoreTouchRing = false;
-  bool ledRingEnabled = true; // can be switched off by MQTT (e.g. at night), feedback while scanning/enrolling is still shown
+  bool ledRingEnabled = true;     // can be switched off by MQTT, feedback while scanning/enrolling is still shown
+  bool ledRingSuppressed = false; // idle LED off because of night mode or radar (nobody near the door)
+  bool lockedOut = false;         // too many failed attempts, LED ring shows red
 
   void updateTouchState(bool touched);
   bool isRingTouched();
@@ -61,6 +63,11 @@ private:
   void disconnect();
   uint8_t writeNotepad(uint8_t pageNumber, const char *text, uint8_t length);
   uint8_t readNotepad(uint8_t pageNumber, char *text, uint8_t length);
+
+  // raw packet functions, the Adafruit library only supports packets with up to 64 bytes payload (data packets have up to 256)
+  void flushInput();
+  void writeRawPacket(uint8_t type, const uint8_t *payload, uint16_t length);
+  int readRawPacket(uint8_t *payload, uint16_t maxLength, uint16_t &length, uint32_t timeoutMs);
 
   uint8_t touchRingActiveColor = 2;
   uint8_t touchRingActiveSequence = 1;
@@ -79,6 +86,13 @@ public:
   bool getIgnoreTouchRing();
   void setLedRingEnabled(bool state);
   bool getLedRingEnabled();
+  void setLedRingSuppressed(bool state);
+  void setLockout(bool state);
+  void showAccessDenied();
+  bool hasFinger(int id);
+  String getFingerName(int id);
+  int getFingerCount();
+  uint16_t getCapacity();
   bool isFingerOnSensor();
   void setLedRingError();
   void setLedRingWifiConfig();
@@ -89,9 +103,11 @@ public:
   void configTouchRingActive(uint8_t color, uint8_t sequence, uint8_t scanColor, uint8_t matchColor);
   bool deleteAll();
 
-  // functions for sensor replacement
-  void exportSensorDB();
-  void importSensorDB();
+  // template transfer for backup/restore
+  bool readIndexTable(bool *occupied, uint16_t slots);
+  int readTemplate(uint16_t id, uint8_t *buffer, size_t bufferSize); // returns template size or -1
+  bool writeTemplate(uint16_t id, const uint8_t *data, size_t length);
+  void setFingerName(int id, const String &name); // stores the name for an existing template (prefs + list)
 };
 
 #endif

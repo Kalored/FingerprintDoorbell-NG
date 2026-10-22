@@ -35,6 +35,16 @@ Changes in 0.6:
 - separate "MQTT" page in the web UI, all MQTT topics configurable there (collapsed sections "Advanced options" / "Topic names"), plus port, client id, keepalive, on/off payloads (e.g. true/false for ioBroker), retain flag and log publishing
 - connection diagnostics: reason of MQTT/WiFi connection losses in the log, counters on the system page
 
+Changes in 0.7:
+- **Backup & restore** of all fingerprints (sensor templates, names, access times) as a file, also to a new sensor
+- **Access times per finger** (weekdays + time window, or disabled); outside the window "accessDenied" is published instead of a match
+- **Protection against trying out fingers**: lockout after a configurable number of failed attempts within a time window; configurable **ring cooldown**
+- **Event history** (last 30 events, kept after a restart) and a live system log on the new "Log" page
+- **Night mode**: idle LED ring off between two times
+- **Radar sensor** (e.g. HLK-LD2410) on a configurable GPIO: presence to MQTT/HA, optionally LED ring only on when somebody is near the door
+- **Enrollment over MQTT / Home Assistant** (optional, disabled by default)
+- many more values in Home Assistant: WiFi signal, uptime, IP, stored fingerprints, failed attempts, lockout, last event, ...
+
 Wishlist / Todo:
 - make GPIOs configurable
 - at startup if there are fingerprints saved on the sensor we don't know give them a number in the list
@@ -205,6 +215,22 @@ All sub topics (and the on/off payloads) can be changed on the "MQTT" page under
 | fingerprintDoorbell/openDoor         | subscribe | "true" opens the door with GPIO 23 |
 | fingerprintDoorbell/ignoreTouchRing  | subscribe | "on"/"off", enables/disables the touch ring (see FAQ below for details) |
 | fingerprintDoorbell/ledRing          | subscribe | "on"/"off", switches the LED ring in idle state on/off (e.g. at night). Feedback while scanning/matching is still shown |
+
+Additional topics of the newer features (fixed names below the root topic):
+
+| MQTT Topic | Action | Values |
+| --- | --- | --- |
+| lockout | publish (retained) | on/off, too many failed attempts |
+| accessDenied | publish (retained) | name of a finger that was rejected (lockout, access times), empty after 3s |
+| lastEvent | publish (retained) | last entry of the event history |
+| nightMode | publish (retained) | on/off |
+| presence | publish (retained) | on/off, radar sensor (only if enabled) |
+| info/rssi, info/uptime, info/ip, info/freeHeap, info/fingerCount, info/failedAttempts, info/wifiLost, info/mqttLost, info/version | publish (retained, every 60s) | diagnostic values |
+| enroll | subscribe | "5:Name" starts an enrollment for slot 5 (only if enabled on the MQTT page) |
+| enrollState | publish (retained) | idle / running / step n/5 / success / failed |
+
+### Radar sensor
+A presence radar like the HLK-LD2410 can be connected directly to the ESP32: VCC to 5V, GND to GND and OUT to a free GPIO (selectable in the settings, default GPIO 32). The OUT pin uses 3.3V logic, so no level shifter is needed. Sensitivity and range are set with the HLKRadarTool app (Bluetooth versions LD2410B/C).
 
 ### Home Assistant
 If "Enable MQTT discovery" is checked in the settings (default), FingerprintDoorbell publishes discovery configs under `homeassistant/...` and shows up as a device in Home Assistant with these entities: Ring, Match ID, Match name, Match confidence, Last log message, Ignore touch ring (switch), LED ring (switch) and Open door (button). Unchecking the option removes the entities again.

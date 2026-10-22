@@ -26,6 +26,9 @@ pio run -t buildfs      # web UI (data/) -> spiffs.bin
 
 - `src/main.cpp`: Wi-Fi/AP config mode, web server routes, the template `processor()`, MQTT (connect, callback, HA discovery), and the main `loop()` state machine (`Mode::scan/enroll/wificonfig/maintenance`).
 - `src/FingerprintManager.*`: all sensor communication (scan, enroll, LED ring, notepad-based sensor pairing). Finger names are stored in NVS namespace `fingerList`.
+- `src/EventLog.*`: persistent event history (30 records, ring buffer file `/events.bin` on SPIFFS). Use `logEvent()` in main, it also publishes `lastEvent`.
+- `src/AccessControl.*`: lockout after failed attempts (millis based) and per-finger access schedules (NVS namespace `fingerAccess`).
+- `src/BackupManager.*`: backup/restore file format (`/backup.fpdb`, `/restore.fpdb` on SPIFFS).
 - `src/SettingsManager.*`: `WifiSettings`/`AppSettings` stored in NVS (`Preferences`). A new setting needs four places: the struct default, `load`, `save`, and the `/settings` handler plus a `processor()` placeholder.
 - `data/*.html`: pages served from SPIFFS (`index` fingerprints, `settings` general/LED/time, `mqtt` broker/topics/HA, `system` diagnostics, `wificonfig` AP mode). Each page posts to its own route and must only touch its own settings fields. `%PLACEHOLDER%` is replaced by `processor()`. They use the local `bootstrap.min.css`; do not add CDN links, because the device must work without internet.
 
@@ -33,6 +36,9 @@ pio run -t buildfs      # web UI (data/) -> spiffs.bin
 
 - **Pointer lifetimes**: `settingsManager.getAppSettings()` returns a *copy*. Never pass `.c_str()` of it to an API that keeps the pointer. `configTime()`/SNTP and `PubSubClient::setServer(const char*)` store pointers, so use static or global `String`s (see `ntpServer`, `mqttHostname`). A dangling NTP pointer previously caused random DNS lookups.
 - **PubSubClient callback**: `topic`/`payload` point into the client's shared buffer. Publishing inside `mqttCallback` overwrites them, so copy them first (`topicStr`). The buffer is enlarged to 1536 bytes for discovery payloads.
+- **Percent signs in pages**: the web server template processor replaces *everything* between two `%` with the processor result (empty for unknown names), even across lines. Never use a literal `%` in HTML/CSS/JS of `data/` (no `%` modulo in JS, no `100%` in CSS); write `%%` if one is really needed. Check with: `python3 -c "import re,glob;[print(f,re.sub(r'%[A-Z0-9_]+%','',open(f).read()).count('%')) for f in glob.glob('data/*.html')]"`
+- **Sensor packets**: `Adafruit_Fingerprint_Packet` holds only 64 payload bytes, template data packets are up to 256 bytes. Use `readRawPacket()/writeRawPacket()` in `FingerprintManager` for template transfer, never `getStructuredPacket()` for data packets.
+- **Long sensor jobs** (backup/restore) run in the loop task (`Mode::backup/restore`), requested via flags by the web server; the browser polls `/backup/status`.
 - **Template processor**: always pass user-defined values through `htmlEscape()`, which also escapes `%`. A raw `%` in a value breaks the rest of the page. Passwords are never sent to the browser; they appear as `********`, and the save handler keeps the old value when it receives that string.
 - **Auth**: every normal-mode route must check `webPassword` the same way the existing ones do. Register the OTA `updateServer.setup()` exactly once, because an earlier unauthenticated registration wins.
 - **Concurrency**: web handlers run in the AsyncTCP task, while `loop()` and `mqttCallback` run in the Arduino loop task. Only the loop task may talk to the sensor. Web handlers that need the sensor must call `waitForMaintenanceMode()` first (see delete finger).

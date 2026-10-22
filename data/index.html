@@ -15,6 +15,31 @@
 		margin-left: 15px;
 		margin-right: 15px;
 	}
+	.collapsible {
+		margin-bottom: 15px;
+	}
+	.collapsible summary {
+		cursor: pointer;
+		font-weight: bold;
+		color: #337ab7;
+		margin: 0 0 15px 0;
+		list-style: none;
+	}
+	.collapsible summary::-webkit-details-marker {
+		display: none;
+	}
+	.collapsible summary::before {
+		content: "\25B8";
+		display: inline-block;
+		width: 1.2em;
+	}
+	.collapsible[open] summary::before {
+		content: "\25BE";
+	}
+	.weekdays label {
+		margin-right: 10px;
+		font-weight: normal;
+	}
   </style>
 </head>
 <body>
@@ -35,30 +60,148 @@
 			// event is fired when a new message from server was received
 			source.addEventListener('message', function(e) {
 				console.log("message", e.data);
-				document.getElementById('logMessages').innerHTML = event.data;
+				document.getElementById('logMessages').innerHTML = e.data;
 			}, false);
 
 			// event is fired when server side fingerlist was changed (e.g. enrollment of new finger)
 			source.addEventListener('fingerlist', function(e) {
 				console.log("fingerlist", e.data);
-				document.getElementById('selectedFingerprint').innerHTML = event.data;
+				document.getElementById('selectedFingerprint').innerHTML = e.data;
+				fillAccessForm();
 			}, false);
 
 		}
 
-		function askForNewName(e)
+		function selectedFingerOption()
 		{
 			var list = document.getElementById("selectedFingerprint");
-			var strOldName = list.options[list.selectedIndex].text;
-			strOldName = strOldName.substr(strOldName.indexOf('-') + 2);
-			newname = prompt('New Name?',strOldName);
+			return list.selectedIndex >= 0 ? list.options[list.selectedIndex] : null;
+		}
+
+		function askForNewName(e)
+		{
+			var option = selectedFingerOption();
+			if (!option) {
+				e.preventDefault();
+				return;
+			}
+			var strOldName = option.getAttribute('data-name') || '';
+			var newname = prompt('New Name?', strOldName);
 			if (newname === null)
-        		document.getElementById('renameNewName').value = strOldName;
-    		else
+				document.getElementById('renameNewName').value = strOldName;
+			else
 				document.getElementById('renameNewName').value = newname;
 		}
+
+		function pad(n) { return (n < 10 ? '0' : '') + n; }
+		// no modulo operator here: the template processor of the web server treats the percent sign as placeholder
+		function minutesToTime(m) { m = parseInt(m, 10); var h = Math.floor(m / 60); var min = m - h * 60; if (h >= 24) h -= 24; return pad(h) + ':' + pad(min); }
+
+		// fills the access time form with the schedule of the selected finger
+		function fillAccessForm()
+		{
+			var option = selectedFingerOption();
+			var form = document.getElementById('accessForm');
+			if (!form) return;
+			if (!option) {
+				document.getElementById('accessFingerLabel').textContent = '(no finger selected)';
+				return;
+			}
+			document.getElementById('accessFingerId').value = option.value;
+			document.getElementById('accessFingerLabel').textContent = option.value + ' - ' + (option.getAttribute('data-name') || '');
+			var days = parseInt(option.getAttribute('data-days'), 10);
+			var from = parseInt(option.getAttribute('data-from'), 10);
+			var to = parseInt(option.getAttribute('data-to'), 10);
+			var mode = 'always';
+			if (days === 0) mode = 'disabled';
+			else if (!(days === 127 && from === 0 && to === 1440)) mode = 'restricted';
+			form.querySelector('input[name=accessMode][value=' + mode + ']').checked = true;
+			for (var d = 0; d < 7; d++)
+				document.getElementById('day' + d).checked = mode !== 'restricted' || (days & (1 << d)) !== 0;
+			document.getElementById('accessFrom').value = minutesToTime(mode === 'restricted' ? from : 0);
+			document.getElementById('accessTo').value = (mode === 'restricted' && to !== 1440) ? minutesToTime(to) : '23:59';
+			updateAccessMode();
+		}
+
+		function updateAccessMode()
+		{
+			var restricted = document.querySelector('input[name=accessMode][value=restricted]').checked;
+			document.getElementById('accessRestrictions').style.display = restricted ? '' : 'none';
+		}
+
+		// backup / restore: the sensor work is done by the device in the background, so poll the status
+		function setBackupStatus(text, isError)
+		{
+			var el = document.getElementById('backupStatus');
+			el.textContent = text;
+			el.className = isError ? 'text-danger' : 'text-muted';
+		}
+
+		function pollBackupStatus(onDone)
+		{
+			fetch('/backup/status').then(function (r) { return r.json(); }).then(function (status) {
+				if (status.state === 'running') {
+					setBackupStatus(status.message + (status.total ? ' (' + status.progress + '/' + status.total + ')' : ''), false);
+					setTimeout(function () { pollBackupStatus(onDone); }, 1000);
+				} else {
+					setBackupStatus(status.message, status.state === 'error');
+					document.getElementById('btnCreateBackup').disabled = false;
+					document.getElementById('btnRestore').disabled = false;
+					if (status.state === 'done' && onDone) onDone();
+				}
+			}).catch(function () { setTimeout(function () { pollBackupStatus(onDone); }, 2000); });
+		}
+
+		function createBackup()
+		{
+			document.getElementById('btnCreateBackup').disabled = true;
+			setBackupStatus('Starting backup...', false);
+			fetch('/backup/create', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (status) {
+				if (status.state === 'error') {
+					setBackupStatus(status.message, true);
+					document.getElementById('btnCreateBackup').disabled = false;
+					return;
+				}
+				pollBackupStatus(function () { window.location = '/backup/download'; });
+			});
+		}
+
+		function restoreBackup()
+		{
+			var fileInput = document.getElementById('restoreFile');
+			if (!fileInput.files.length) {
+				setBackupStatus('Please choose a backup file first.', true);
+				return;
+			}
+			var clearFirst = document.getElementById('clearFirst').checked;
+			if (!confirm('Restore the fingerprints from "' + fileInput.files[0].name + '"?' + (clearFirst ? '\nAll fingerprints currently stored on the sensor will be deleted first!' : '\nFingerprints with the same slot number will be overwritten.')))
+				return;
+			var data = new FormData();
+			if (clearFirst) data.append('clearFirst', 'on');
+			data.append('file', fileInput.files[0]);
+			document.getElementById('btnRestore').disabled = true;
+			setBackupStatus('Uploading...', false);
+			fetch('/backup/restore', { method: 'POST', body: data }).then(function (r) { return r.json(); }).then(function (status) {
+				if (status.state === 'error') {
+					setBackupStatus(status.message, true);
+					document.getElementById('btnRestore').disabled = false;
+					return;
+				}
+				pollBackupStatus(null);
+			}).catch(function () {
+				setBackupStatus('Upload failed.', true);
+				document.getElementById('btnRestore').disabled = false;
+			});
+		}
+
+		document.addEventListener('DOMContentLoaded', function () {
+			document.getElementById('selectedFingerprint').addEventListener('change', fillAccessForm);
+			var radios = document.querySelectorAll('input[name=accessMode]');
+			for (var i = 0; i < radios.length; i++) radios[i].addEventListener('change', updateAccessMode);
+			fillAccessForm();
+		});
     </script>
-	
+
 	<nav class="navbar navbar-inverse">
 		<div class="container-fluid">
 		  <div class="navbar-header">
@@ -68,29 +211,30 @@
 			<li class="active"><a href="#">Fingerprints</a></li>
 			<li><a href="settings">Settings</a></li>
 			<li><a href="mqtt">MQTT</a></li>
+			<li><a href="log">Log</a></li>
 			<li><a href="system">System</a></li>
 		  </ul>
 		</div>
 	</nav>
-	
+
 	<p></p>
 	<div class="alert alert-custom" id="logMessages" role="alert">%LOGMESSAGES%</div>
-	
+
 	<form class="form-horizontal" action="/editFingerprints">
 	<fieldset>
 
 	<!-- Form Name -->
-	<legend>Manage fingerprints</legend>
+	<legend>Manage fingerprints (%FINGER_COUNT%)</legend>
 
 	<!-- Select Multiple -->
 	<div class="form-group">
 	  <label class="col-md-4 control-label" for="selectedFingerprint">Fingerprints in DB</label>
 	  <div class="col-md-4">
 		<select id="selectedFingerprint" name="selectedFingerprint" class="form-control" size="10">
-		  <!--option value="1">1 - Option one</option-->
 		  %FINGERLIST%
 		</select>
 		<input type="hidden" id="renameNewName" name="renameNewName" type="text" class="form-control input-md">
+		<small class="text-muted">Access times are shown in brackets, e.g. [Mo,Tu 08:00-12:00].</small>
 	  </div>
 	</div>
 
@@ -99,13 +243,71 @@
 	  <label class="col-md-4 control-label" for="btnRename"></label>
 	  <div class="col-md-8">
 		<button id="btnRename" name="btnRename" class="btn btn-info" onclick="askForNewName(event)">Rename</button>
-		<button id="btnDelete" name="btnDelete" class="btn btn-danger">Delete</button>
+		<button id="btnDelete" name="btnDelete" class="btn btn-danger" onclick="return confirm('Delete the selected fingerprint?')">Delete</button>
 	  </div>
 	</div>
 
 	</fieldset>
 	</form>
-	
+
+	<form class="form-horizontal" id="accessForm" action="/access" method="post">
+	<details class="collapsible">
+	<summary>Access times of the selected finger</summary>
+	<input type="hidden" id="accessFingerId" name="accessFingerId" value="">
+
+	<div class="form-group">
+	  <label class="col-md-4 control-label">Finger</label>
+	  <div class="col-md-4">
+		<p class="form-control-static" id="accessFingerLabel"></p>
+	  </div>
+	</div>
+
+	<div class="form-group">
+	  <label class="col-md-4 control-label">Access</label>
+	  <div class="col-md-4">
+		<label class="radio-inline"><input type="radio" name="accessMode" value="always" checked> Always</label>
+		<label class="radio-inline"><input type="radio" name="accessMode" value="restricted"> Only at certain times</label>
+		<label class="radio-inline"><input type="radio" name="accessMode" value="disabled"> Disabled</label>
+	  </div>
+	</div>
+
+	<div id="accessRestrictions">
+	  <div class="form-group">
+		<label class="col-md-4 control-label">Weekdays</label>
+		<div class="col-md-4 weekdays">
+		  <label><input type="checkbox" id="day0" name="day0"> Mo</label>
+		  <label><input type="checkbox" id="day1" name="day1"> Tu</label>
+		  <label><input type="checkbox" id="day2" name="day2"> We</label>
+		  <label><input type="checkbox" id="day3" name="day3"> Th</label>
+		  <label><input type="checkbox" id="day4" name="day4"> Fr</label>
+		  <label><input type="checkbox" id="day5" name="day5"> Sa</label>
+		  <label><input type="checkbox" id="day6" name="day6"> Su</label>
+		</div>
+	  </div>
+	  <div class="form-group">
+		<label class="col-md-4 control-label" for="accessFrom">Time</label>
+		<div class="col-md-2">
+		  <input type="time" id="accessFrom" name="accessFrom" class="form-control" value="00:00">
+		</div>
+		<div class="col-md-2">
+		  <input type="time" id="accessTo" name="accessTo" class="form-control" value="23:59">
+		</div>
+		<div class="col-md-4 col-md-offset-4">
+		  <small class="text-muted">From - to. A window over midnight (e.g. 22:00 - 06:00) is possible. Outside of the allowed times the finger is
+			not accepted: no match is published, the door is not opened and "accessDenied" is published instead. Needs a working time (NTP).</small>
+		</div>
+	  </div>
+	</div>
+
+	<div class="form-group">
+	  <label class="col-md-4 control-label"></label>
+	  <div class="col-md-4">
+		<button id="btnSaveAccess" name="btnSaveAccess" class="btn btn-success">Save access times</button>
+	  </div>
+	</div>
+	</details>
+	</form>
+
 	<form class="form-horizontal" action="/enroll">
 	<fieldset>
 
@@ -114,7 +316,7 @@
 
 	<!-- Text input-->
 	<div class="form-group">
-	  <label class="col-md-4 control-label" for="newFingerprintId">Memory slot (1-200)</label>  
+	  <label class="col-md-4 control-label" for="newFingerprintId">Memory slot (1-200)</label>
 	  <div class="col-md-4">
 	  <input id="newFingerprintId" name="newFingerprintId" type="text" placeholder="1-200" class="form-control input-md" required="">
 	  <small class="text-muted">The sensor has 200 memory slots available for storing fingerprints. The choosen slot number will also be used as an ID when matches are published by MQTT.</small>
@@ -123,7 +325,7 @@
 
 	<!-- Text input-->
 	<div class="form-group">
-	  <label class="col-md-4 control-label" for="newFingerprintName">Name</label>  
+	  <label class="col-md-4 control-label" for="newFingerprintName">Name</label>
 	  <div class="col-md-4">
 	  <input id="newFingerprintName" name="newFingerprintName" type="text" placeholder="(optional)" class="form-control input-md">
 	  <small class="text-muted">Just for human readability you can additionally assign an name to your slot number. The name will also been published by MQTT.<br>
@@ -142,12 +344,46 @@
 	</fieldset>
 	</form>
 
+	<div class="form-horizontal">
+	<fieldset>
+	<legend>Backup &amp; restore</legend>
+
+	<div class="form-group">
+	  <label class="col-md-4 control-label">Backup</label>
+	  <div class="col-md-4">
+		<button id="btnCreateBackup" type="button" class="btn btn-info" onclick="createBackup()">Create and download backup</button><br>
+		<small class="text-muted">Saves all fingerprints (sensor templates), their names and access times to a file. Keep it in a safe
+		  place, it contains your fingerprint data!</small>
+	  </div>
+	</div>
+
+	<div class="form-group">
+	  <label class="col-md-4 control-label" for="restoreFile">Restore</label>
+	  <div class="col-md-4">
+		<input type="file" id="restoreFile" accept=".fpdb">
+		<div class="checkbox">
+		  <label><input type="checkbox" id="clearFirst"> Delete all fingerprints on the sensor first</label>
+		</div>
+		<button id="btnRestore" type="button" class="btn btn-warning" onclick="restoreBackup()">Restore backup</button><br>
+		<small class="text-muted">Also works with a new sensor. After replacing the sensor do a "Pairing a new sensor" in the settings.</small>
+	  </div>
+	</div>
+
+	<div class="form-group">
+	  <label class="col-md-4 control-label"></label>
+	  <div class="col-md-4">
+		<span id="backupStatus" class="text-muted"></span>
+	  </div>
+	</div>
+	</fieldset>
+	</div>
+
 	<p></p>
 	<nav class="navbar navbar-default ">
 		<div class="container-fluid">
 			<p class="navbar-text">FingerprintDoorbell, Version %VERSIONINFO%</p>
 			<p class="navbar-text">%UPTIME%</p>
-			<p class="navbar-text"><a href="https://github.com/geronet1/FingerprintDoorbell" target="_blank">Github</a></p>
+			<p class="navbar-text"><a href="https://github.com/Kalored/FingerprintDoorbell-geronet1" target="_blank">Github</a></p>
 		</div>
 	</nav>
 

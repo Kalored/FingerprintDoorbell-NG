@@ -18,11 +18,11 @@
 			margin-right: 15px;
 		}
 
-		.mqtt-advanced {
+		.collapsible {
 			margin-bottom: 15px;
 		}
 
-		.mqtt-advanced summary {
+		.collapsible summary {
 			cursor: pointer;
 			font-weight: bold;
 			color: #337ab7;
@@ -30,17 +30,17 @@
 			list-style: none;
 		}
 
-		.mqtt-advanced summary::-webkit-details-marker {
+		.collapsible summary::-webkit-details-marker {
 			display: none;
 		}
 
-		.mqtt-advanced summary::before {
+		.collapsible summary::before {
 			content: "\25B8";
 			display: inline-block;
 			width: 1.2em;
 		}
 
-		.mqtt-advanced[open] summary::before {
+		.collapsible[open] summary::before {
 			content: "\25BE";
 		}
 	</style>
@@ -79,6 +79,7 @@
 				<li><a href="/">Fingerprints</a></li>
 				<li><a href="settings">Settings</a></li>
 				<li class="active"><a href="#">MQTT</a></li>
+				<li><a href="log">Log</a></li>
 				<li><a href="system">System</a></li>
 			</ul>
 		</div>
@@ -151,7 +152,22 @@
 				</div>
 			</div>
 
-			<details class="mqtt-advanced">
+			<div class="form-group">
+				<label class="col-md-4 control-label" for="mqtt_enroll">Enrollment</label>
+				<div class="col-md-4">
+					<div class="checkbox">
+						<label>
+							<input type="checkbox" id="mqtt_enroll" name="mqtt_enroll" value="on" %MQTT_ENROLL%>
+							Allow to start an enrollment over MQTT
+						</label>
+					</div>
+					<small class="text-muted">Send e.g. "5:Stephan" to "&lt;root topic&gt;/enroll" (in Home Assistant: text field
+						"Enroll finger"). Progress is published to "&lt;root topic&gt;/enrollState". Only enable this if your broker
+						is protected, everybody who can publish to it can add a finger.</small>
+				</div>
+			</div>
+
+			<details class="collapsible">
 				<summary>Advanced options</summary>
 
 				<div class="form-group">
@@ -206,7 +222,7 @@
 
 			</details>
 
-			<details class="mqtt-advanced">
+			<details class="collapsible">
 				<summary>Topic names</summary>
 
 				<div class="form-group">
@@ -326,7 +342,7 @@
 		<div class="container-fluid">
 			<p class="navbar-text">FingerprintDoorbell, Version %VERSIONINFO%</p>
 			<p class="navbar-text">%UPTIME%</p>
-			<p class="navbar-text"><a href="https://github.com/geronet1/FingerprintDoorbell" target="_blank">Github</a></p>
+			<p class="navbar-text"><a href="https://github.com/Kalored/FingerprintDoorbell-geronet1" target="_blank">Github</a></p>
 		</div>
 	</nav>
 

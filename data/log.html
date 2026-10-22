@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- created with https://bootstrapformbuilder.com/ -->
+  <title>FingerprintDoorbell</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" charset="utf-8">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" type="text/css" href="bootstrap.min.css">
+  <style>
+	.alert-custom{
+		background-color:#cecece;
+		color:rgb(0, 0, 0);
+	}
+	.form-horizontal{
+		margin-left: 15px;
+		margin-right: 15px;
+	}
+  </style>
+</head>
+<body>
+	<script>
+		if (!!window.EventSource) {
+			var source = new EventSource('/events');
+			// new log line: append it to the system log (newest at the bottom)
+			source.addEventListener('logline', function (e) {
+				var log = document.getElementById('systemLog');
+				log.innerHTML += e.data + '<br>';
+				var lines = log.innerHTML.split('<br>');
+				if (lines.length > 101)
+					log.innerHTML = lines.slice(lines.length - 101).join('<br>');
+				log.scrollTop = log.scrollHeight;
+			}, false);
+		}
+		document.addEventListener('DOMContentLoaded', function () {
+			var log = document.getElementById('systemLog');
+			log.scrollTop = log.scrollHeight;
+		});
+	</script>
+
+	<nav class="navbar navbar-inverse">
+		<div class="container-fluid">
+		  <div class="navbar-header">
+			<a class="navbar-brand" href="/">%HOSTNAME%</a>
+		  </div>
+		  <ul class="nav navbar-nav">
+			<li><a href="/">Fingerprints</a></li>
+			<li><a href="settings">Settings</a></li>
+			<li><a href="mqtt">MQTT</a></li>
+			<li class="active"><a href="#">Log</a></li>
+			<li><a href="system">System</a></li>
+		</ul>
+		</div>
+	</nav>
+
+	<div class="container-fluid">
+		<h4>Events <small>last 30, kept after a restart</small></h4>
+		<div class="table-responsive">
+			<table class="table table-condensed table-striped">
+				<thead>
+					<tr><th>Time</th><th>Event</th><th>Finger</th><th>Details</th></tr>
+				</thead>
+				<tbody>
+					%EVENTLIST%
+				</tbody>
+			</table>
+		</div>
+		<form action="/log/clear" method="post" onsubmit="return confirm('Delete the event history?')">
+			<button name="btnClearEvents" class="btn btn-default btn-sm">Clear events</button>
+		</form>
+
+		<h4>Security</h4>
+		<p>%LOCKOUT_STATUS%</p>
+
+		<h4>System log <small>live, since the last restart</small></h4>
+		<div id="systemLog" class="well well-sm" style="max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 12px;">%LOGMESSAGES_FULL%</div>
+	</div>
+
+	<p></p>
+	<nav class="navbar navbar-default ">
+		<div class="container-fluid">
+			<p class="navbar-text">FingerprintDoorbell, Version %VERSIONINFO%</p>
+			<p class="navbar-text">%UPTIME%</p>
+			<p class="navbar-text"><a href="https://github.com/Kalored/FingerprintDoorbell-geronet1" target="_blank">Github</a></p>
+		</div>
+	</nav>
+
+</body>
+</html>
