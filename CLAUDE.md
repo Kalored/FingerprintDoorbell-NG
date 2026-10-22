@@ -63,5 +63,5 @@ GPIOs: sensor UART on Serial2, touch ring pin 5, doorbell output 19, door opener
 
 ## Open topics
 
-- Frequent MQTT reconnects in ioBroker (~every 30 s, "reconnected. Old secret ..."). Diagnostics were added: the log shows the loss reason and RSSI, and the system page shows counters. The root cause is still unknown; suspects are weak Wi-Fi, reboots, or a duplicate client ID.
+- WiFi (user runs TP-Link Omada, multiple APs): with 0.7.2 the first connection took ~200s (status 4 CONNECT_FAILED, RSSI -65 dBm). 0.7.3 (connect to strongest AP by BSSID/channel, WiFi stack restart on retries) connected after 11s. Recommended Omada settings for ESP SSIDs: WPA2-PSK AES, PMF disabled, no 802.11r, no band steering. Frequent MQTT reconnects in ioBroker (~every 30 s) were probably caused by the same WiFi issues plus modem sleep (disabled since 0.7.1); not confirmed yet.
 - Fork issue #2 (pairing fails with `.`/`-` in the MQTT password) could not be explained from the code.
