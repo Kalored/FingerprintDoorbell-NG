@@ -49,6 +49,10 @@ Changes in 0.7.1:
 - faster web UI: stylesheet is stored gzip compressed and cached by the browser (19kB once instead of 121kB on every page), WiFi modem sleep disabled (it added 100-300ms latency per packet), no blocking DNS lookup on the system page
 - settings and MQTT settings are applied immediately, no reboot anymore
 
+Changes in 0.7.2:
+- fast boot: the device doesn't wait for WiFi anymore. Before, it rebooted after 30s without WiFi connection, which could end in a reboot loop of several minutes. Now the sensor, doorbell and web server start immediately, WiFi connects in the background (retried every 20s) and MQTT connects as soon as WiFi is up. The doorbell output also works without WiFi.
+- log shows the boot time and after how many seconds WiFi was connected
+
 Wishlist / Todo:
 - make GPIOs configurable
 - at startup if there are fingerprints saved on the sensor we don't know give them a number in the list

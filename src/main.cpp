@@ -27,7 +27,7 @@ enum class Mode
   restore
 };
 
-const char *VersionInfo = "0.7.1";
+const char *VersionInfo = "0.7.2";
 
 // ===================================================================================================================
 // Caution: below are not the credentials for connecting to your home network, they are for the Access Point mode!!!
@@ -58,6 +58,8 @@ const int logPanelMessagesCount = 5;  // shown in the log panel on top of every 
 String logMessages[logMessagesCount]; // log messages, 0=most recent log message
 bool shouldReboot = false;
 unsigned long wifiReconnectPreviousMillis = 0;
+unsigned long wifiConnectAttempts = 0;
+bool wifiEverConnected = false;
 unsigned long mqttReconnectPreviousMillis = 0;
 
 String enrollId;
@@ -960,32 +962,22 @@ bool checkPairingValid()
   }
 }
 
-bool initWifi()
+// starts the WiFi connection in the background. The boot does not wait for it anymore: before, the device rebooted
+// after 30s without connection, which could end in a reboot loop of several minutes with a weak signal.
+void initWifi()
 {
-  // Connect to Wi-Fi
   WifiSettings wifiSettings = settingsManager.getWifiSettings();
+  WiFi.persistent(false); // credentials are stored in our own settings, don't write them to flash on every boot
   WiFi.mode(WIFI_STA);
   // disable WiFi modem sleep: it adds 100-300ms latency to every packet (slow web UI, unstable MQTT).
   // The doorbell is powered permanently, so the higher power consumption doesn't matter.
   WiFi.setSleep(false);
   WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
   WiFi.setHostname(wifiSettings.hostname.c_str()); // define hostname
+  WiFi.setAutoReconnect(true);
   WiFi.begin(wifiSettings.ssid.c_str(), wifiSettings.password.c_str());
-  int counter = 0;
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(1000);
-    Serial.println("Waiting for WiFi connection...");
-    counter++;
-    if (counter > 30)
-      return false;
-  }
-  Serial.println("Connected!");
-
-  // Print ESP32 Local IP Address
-  Serial.println(WiFi.localIP());
-
-  return true;
+  wifiReconnectPreviousMillis = millis();
+  Serial.println("WiFi connection started in background");
 }
 
 void initWiFiAccessPointForConfiguration()
@@ -1976,6 +1968,8 @@ void mqttCallback(char *topic, byte *message, unsigned int length)
 
 void connectMqttClient()
 {
+  if (WiFi.status() != WL_CONNECTED)
+    return; // would only block with a DNS lookup / connect timeout
   if (!mqttClient.connected() && mqttConfigValid)
   {
     Serial.print("(Re)connect to MQTT broker...");
@@ -2039,8 +2033,13 @@ void initMqtt()
   mqttClient.setBufferSize(1536); // needed for Home Assistant discovery payloads
   mqttClient.setKeepAlive(settingsManager.getAppSettings().mqttKeepAlive);
   mqttClient.setCallback(mqttCallback);
-  connectMqttClient();
-  mqttReconnectPreviousMillis = millis();
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    connectMqttClient();
+    mqttReconnectPreviousMillis = millis();
+  }
+  else
+    mqttReconnectPreviousMillis = 0; // connect as soon as WiFi is up
 }
 
 void setupRadarPin()
@@ -2306,33 +2305,27 @@ void setup()
   {
     Serial.println("Started normal operating mode");
     currentMode = Mode::scan;
-    if (initWifi())
+    initWifi(); // connects in the background, the doorbell works without WiFi too
+    startWebserver();
+    if (settingsManager.getAppSettings().mqttServer.isEmpty())
     {
-      startWebserver();
-      if (settingsManager.getAppSettings().mqttServer.isEmpty())
-      {
-        mqttConfigValid = false;
-        notifyClients("Error: No MQTT Broker is configured! Please go to settings and enter your server URL + user credentials.");
-      }
-      else
-      {
-        initMqtt();
-      }
-      if (fingerManager.connected)
-      {
-        fingerManager.configTouchRingActive(settingsManager.getAppSettings().touchRingActiveColor, settingsManager.getAppSettings().touchRingActiveSequence, settingsManager.getAppSettings().scanColor, settingsManager.getAppSettings().matchColor);
-        updateLedSuppression();
-        fingerManager.setLedRingReady();
-      }
-      else
-        fingerManager.setLedRingError();
-      logEvent(EventType::boot, 0, 0, String("firmware ") + VersionInfo);
+      mqttConfigValid = false;
+      notifyClients("Error: No MQTT Broker is configured! Please go to settings and enter your server URL + user credentials.");
     }
     else
     {
-      fingerManager.setLedRingError();
-      shouldReboot = true;
+      initMqtt(); // only configures the client, the connection is made by the loop as soon as WiFi is connected
     }
+    if (fingerManager.connected)
+    {
+      fingerManager.configTouchRingActive(settingsManager.getAppSettings().touchRingActiveColor, settingsManager.getAppSettings().touchRingActiveSequence, settingsManager.getAppSettings().scanColor, settingsManager.getAppSettings().matchColor);
+      updateLedSuppression();
+      fingerManager.setLedRingReady();
+    }
+    else
+      fingerManager.setLedRingError();
+    logEvent(EventType::boot, 0, 0, String("firmware ") + VersionInfo);
+    notifyClients(String("System started in ") + (millis() / 1000.0) + "s, waiting for WiFi...");
   }
 }
 
@@ -2356,9 +2349,15 @@ void loop()
       wifiLostCount++;
       notifyClients("WiFi connection lost (status " + String(WiFi.status()) + ")");
     }
-    else if (!wifiWasConnected && wifiConnected && wifiLostCount > 0)
+    else if (!wifiWasConnected && wifiConnected)
     {
-      notifyClients("WiFi reconnected, RSSI " + String(WiFi.RSSI()) + " dBm");
+      if (!wifiEverConnected)
+        notifyClients("WiFi connected after " + String(millis() / 1000.0) + "s, IP " + WiFi.localIP().toString() + ", RSSI " + String(WiFi.RSSI()) + " dBm");
+      else
+        notifyClients("WiFi reconnected, RSSI " + String(WiFi.RSSI()) + " dBm");
+      wifiEverConnected = true;
+      wifiConnectAttempts = 0;
+      mqttReconnectPreviousMillis = 0; // connect MQTT right away instead of waiting for the 30s timer
     }
     wifiWasConnected = wifiConnected;
 
@@ -2369,19 +2368,23 @@ void loop()
       notifyClients("MQTT connection lost: " + getMqttStateString(mqttClient.state()) + ", WiFi RSSI " + String(WiFi.RSSI()) + " dBm");
     }
 
-    // reconnect WiFi if down for 30s
-    if ((WiFi.status() != WL_CONNECTED) && (currentMillis - wifiReconnectPreviousMillis >= 30000ul))
+    // retry WiFi if still not connected after 20s. A fresh WiFi.begin() is more reliable than reconnect() with this
+    // framework version (the first connection after a reset sometimes hangs).
+    if (!wifiConnected && (currentMillis - wifiReconnectPreviousMillis >= 20000ul))
     {
-      Serial.println("Reconnecting to WiFi...");
+      wifiConnectAttempts++;
+      Serial.printf("WiFi not connected (status %d), retry #%lu\n", WiFi.status(), wifiConnectAttempts);
+      if (wifiConnectAttempts % 3 == 0)
+        notifyClients(String("Still no WiFi connection after ") + (millis() / 1000) + "s (status " + WiFi.status() + "), retrying...");
       WiFi.disconnect();
-      WiFi.reconnect();
+      WiFi.begin(settingsManager.getWifiSettings().ssid.c_str(), settingsManager.getWifiSettings().password.c_str());
       wifiReconnectPreviousMillis = currentMillis;
     }
 
     // reconnect mqtt if down
     if (!settingsManager.getAppSettings().mqttServer.isEmpty())
     {
-      if (!mqttClient.connected() && (currentMillis - mqttReconnectPreviousMillis >= 30000ul))
+      if (wifiConnected && !mqttClient.connected() && (mqttReconnectPreviousMillis == 0 || currentMillis - mqttReconnectPreviousMillis >= 30000ul))
       {
         connectMqttClient();
         mqttReconnectPreviousMillis = currentMillis;

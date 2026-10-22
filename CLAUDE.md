@@ -46,6 +46,7 @@ pio run -t buildfs      # web UI (data/) -> spiffs.bin
 - Time zone: the C library silently falls back to UTC for an invalid TZ string (shows up as 1-2 h offset). Always pass it through `resolveTimezone()` (accepts names from the `timezones[]` table or POSIX strings) and apply it with `configTzTime()`.
 - Saving settings must not reboot: the handler saves and sets a flag (`applySettingsRequested`, `applyMqttRequested`), the loop task applies it (`applySettings()`, `applyMqttSettings()`). A new setting has to be handled there too.
 - `bootstrap.min.css` is only stored as `data/bootstrap.min.css.gz` and served with `Content-Encoding: gzip` and a long cache time. If it is ever replaced, rename it so browsers don't keep the old one.
+- Never block the boot on WiFi or MQTT and never reboot because of a missing connection: `initWifi()` only starts the connection, the loop retries WiFi (`WiFi.begin()` every 20s) and connects MQTT once WiFi is up. `connectMqttClient()` returns immediately without WiFi.
 - WiFi modem sleep is disabled on purpose (`WiFi.setSleep(false)`), it made the web UI slow.
 - Settings forms use POST (`HTTP_GET | HTTP_POST` routes) so passwords do not end up in URLs.
 
