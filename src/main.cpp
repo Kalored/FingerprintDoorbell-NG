@@ -1493,8 +1493,17 @@ void startWebserver()
   // so it is only transferred once instead of on every page load
   webServer.on("/bootstrap.min.css", HTTP_GET, [](AsyncWebServerRequest *request)
                {
-    AsyncWebServerResponse *response = request->beginResponse(SPIFFS, "/bootstrap.min.css.gz", "text/css");
-    response->addHeader("Content-Encoding", "gzip");
+    // fall back to the uncompressed file, e.g. if only the firmware was updated but not the file system
+    // (a missing stylesheet makes the browser wait and shows the pages without layout)
+    bool gzip = SPIFFS.exists("/bootstrap.min.css.gz");
+    if (!gzip && !SPIFFS.exists("/bootstrap.min.css"))
+    {
+      request->send(404, "text/plain", "bootstrap.min.css missing, please update the file system (spiffs.bin)");
+      return;
+    }
+    AsyncWebServerResponse *response = request->beginResponse(SPIFFS, gzip ? "/bootstrap.min.css.gz" : "/bootstrap.min.css", "text/css");
+    if (gzip)
+      response->addHeader("Content-Encoding", "gzip");
     response->addHeader("Cache-Control", "public, max-age=2592000");
     request->send(response); });
 
