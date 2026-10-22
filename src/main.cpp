@@ -1030,12 +1030,21 @@ void startWebserver()
 {
 
   // Initialize SPIFFS
-  if (!SPIFFS.begin(true))
+  // Never return here without starting the web server: the OTA update page doesn't need SPIFFS, it is the only
+  // way to repair a broken file system without USB.
+  unsigned long spiffsStart = millis();
+  bool spiffsOk = SPIFFS.begin(false);
+  if (!spiffsOk)
   {
-    Serial.println("An Error has occurred while mounting SPIFFS");
-    return;
+    Serial.println("SPIFFS mount failed, formatting...");
+    spiffsOk = SPIFFS.begin(true); // formats the partition, this can take a while
+    if (spiffsOk)
+      notifyClients(String("File system was damaged and has been formatted (") + (millis() - spiffsStart) / 1000 + "s). Please upload spiffs.bin again on the update page.");
+    else
+      notifyClients("File system could not be mounted. Please upload spiffs.bin again on the update page (/update).");
   }
-  eventLog.begin();
+  if (spiffsOk)
+    eventLog.begin();
 
   applyTimeSettings();
 
@@ -1096,6 +1105,11 @@ void startWebserver()
       {
         if(!request->authenticate(webServerUser, settingsManager.getAppSettings().webPassword.c_str()))
           return request->requestAuthentication();
+      }
+      if (!SPIFFS.exists("/index.html"))
+      {
+        request->send(200, "text/html", "<html><body><h3>FingerprintDoorbell</h3><p>The web pages are missing, the file system has to be updated.</p><p><a href=\"/update\">Upload spiffs.bin on the update page</a></p></body></html>");
+        return;
       }
       request->send(SPIFFS, "/index.html", String(), false, processor); });
 
