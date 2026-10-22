@@ -44,6 +44,9 @@ pio run -t buildfs      # web UI (data/) -> spiffs.bin
 - **Concurrency**: web handlers run in the AsyncTCP task, while `loop()` and `mqttCallback` run in the Arduino loop task. Only the loop task may talk to the sensor. Web handlers that need the sensor must call `waitForMaintenanceMode()` first (see delete finger).
 - **Blocking**: `delay()` calls in `doScan`/enrollment stall `mqttClient.loop()`. Keep them short, or MQTT keepalive (15 s) can time out.
 - Time zone: the C library silently falls back to UTC for an invalid TZ string (shows up as 1-2 h offset). Always pass it through `resolveTimezone()` (accepts names from the `timezones[]` table or POSIX strings) and apply it with `configTzTime()`.
+- Saving settings must not reboot: the handler saves and sets a flag (`applySettingsRequested`, `applyMqttRequested`), the loop task applies it (`applySettings()`, `applyMqttSettings()`). A new setting has to be handled there too.
+- `bootstrap.min.css` is only stored as `data/bootstrap.min.css.gz` and served with `Content-Encoding: gzip` and a long cache time. If it is ever replaced, rename it so browsers don't keep the old one.
+- WiFi modem sleep is disabled on purpose (`WiFi.setSleep(false)`), it made the web UI slow.
 - Settings forms use POST (`HTTP_GET | HTTP_POST` routes) so passwords do not end up in URLs.
 
 ## MQTT interface

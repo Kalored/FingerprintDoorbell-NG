@@ -45,6 +45,10 @@ Changes in 0.7:
 - **Enrollment over MQTT / Home Assistant** (optional, disabled by default)
 - many more values in Home Assistant: WiFi signal, uptime, IP, stored fingerprints, failed attempts, lockout, last event, ...
 
+Changes in 0.7.1:
+- faster web UI: stylesheet is stored gzip compressed and cached by the browser (19kB once instead of 121kB on every page), WiFi modem sleep disabled (it added 100-300ms latency per packet), no blocking DNS lookup on the system page
+- settings and MQTT settings are applied immediately, no reboot anymore
+
 Wishlist / Todo:
 - make GPIOs configurable
 - at startup if there are fingerprints saved on the sensor we don't know give them a number in the list

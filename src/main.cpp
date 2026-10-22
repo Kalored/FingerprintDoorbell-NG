@@ -9,6 +9,7 @@
 #include <ESPAsyncHTTPUpdateServer.h>
 #include <SPIFFS.h>
 #include <PubSubClient.h>
+#include <lwip/apps/sntp.h>
 #include "FingerprintManager.h"
 #include "SettingsManager.h"
 #include "EventLog.h"
@@ -26,7 +27,7 @@ enum class Mode
   restore
 };
 
-const char *VersionInfo = "0.7";
+const char *VersionInfo = "0.7.1";
 
 // ===================================================================================================================
 // Caution: below are not the credentials for connecting to your home network, they are for the Access Point mode!!!
@@ -73,6 +74,9 @@ bool restoreClearFirst = false;
 volatile bool backupRequested = false;  // set by the web server, executed by the loop task
 volatile bool restoreRequested = false;
 volatile bool clearEventsRequested = false;
+volatile bool applySettingsRequested = false; // settings saved in the web UI, applied by the loop task without reboot
+volatile bool applyMqttRequested = false;
+String oldLwtTopic; // LWT topic before the MQTT settings were changed, "Offline" is published there before reconnecting
 
 // ring spam protection, night mode, radar
 unsigned long lastRingMillis = 0;
@@ -138,6 +142,9 @@ uint16_t timeStringToMinutes(const String &text, uint16_t defaultValue);
 bool isRadarPinAllowed(int pin);
 String getRadarPinOptionsHtml();
 void updateLedSuppression();
+void setupRadarPin();
+void applyTimeSettings();
+void initMqtt();
 
 void addLogMessage(const String &message)
 {
@@ -495,13 +502,10 @@ String processor(const String &var)
   }
   else if (var == "MQTT_SERVER_IP")
   {
-    IPAddress mqttServerIp;
-    u16_t mqttPort;
-    String mqttHostname = splitIpAndPort(settingsManager.getAppSettings().mqttServer, mqttPort);
-    if (WiFi.hostByName(mqttHostname.c_str(), mqttServerIp))
-    {
-      return mqttServerIp.toString();
-    }
+    // no DNS lookup here, it would block the web server: use the address of the current connection
+    if (mqttClient.connected())
+      return espClient.remoteIP().toString();
+    return "not connected";
   }
   else if (var == "CHIP")
   {
@@ -961,6 +965,9 @@ bool initWifi()
   // Connect to Wi-Fi
   WifiSettings wifiSettings = settingsManager.getWifiSettings();
   WiFi.mode(WIFI_STA);
+  // disable WiFi modem sleep: it adds 100-300ms latency to every packet (slow web UI, unstable MQTT).
+  // The doorbell is powered permanently, so the higher power consumption doesn't matter.
+  WiFi.setSleep(false);
   WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
   WiFi.setHostname(wifiSettings.hostname.c_str()); // define hostname
   WiFi.begin(wifiSettings.ssid.c_str(), wifiSettings.password.c_str());
@@ -994,6 +1001,29 @@ void initWiFiAccessPointForConfiguration()
   Serial.println(WifiConfigIp);
 }
 
+// NTP server and time zone, called at startup and when the settings are saved
+void applyTimeSettings()
+{
+  // Init time by NTP Client
+  // SNTP only stores the pointer to the server name, so it must not point into a temporary copy of the settings
+  // (otherwise random memory content is resolved as hostname every few seconds)
+  static String ntpServer;
+  if (sntp_enabled())
+    sntp_stop(); // stop before the string is changed, SNTP still holds the pointer to the old one
+  ntpServer = settingsManager.getAppSettings().ntpServer;
+  String timezone = resolveTimezone(settingsManager.getAppSettings().timezone);
+  Serial.printf("Setting Timezone to %s\n", timezone.c_str());
+  if (!ntpServer.isEmpty())
+    configTzTime(timezone.c_str(), ntpServer.c_str()); // sets NTP server and time zone (setenv copies the TZ string)
+  else
+  {
+    setenv("TZ", timezone.c_str(), 1);
+    tzset();
+  }
+  if (timezone != settingsManager.getAppSettings().timezone)
+    notifyClients("Invalid timezone '" + settingsManager.getAppSettings().timezone + "', using '" + timezone + "' instead. Please check your settings.");
+}
+
 // checks the web password, requests authentication if needed
 bool isAuthorized(AsyncWebServerRequest *request)
 {
@@ -1015,22 +1045,7 @@ void startWebserver()
   }
   eventLog.begin();
 
-  // Init time by NTP Client
-  // SNTP only stores the pointer to the server name, so it must not point into a temporary copy of the settings
-  // (otherwise random memory content is resolved as hostname every few seconds)
-  static String ntpServer;
-  ntpServer = settingsManager.getAppSettings().ntpServer;
-  String timezone = resolveTimezone(settingsManager.getAppSettings().timezone);
-  Serial.printf("Setting Timezone to %s\n", timezone.c_str());
-  if (!ntpServer.isEmpty())
-    configTzTime(timezone.c_str(), ntpServer.c_str()); // sets NTP server and time zone (setenv copies the TZ string)
-  else
-  {
-    setenv("TZ", timezone.c_str(), 1);
-    tzset();
-  }
-  if (timezone != settingsManager.getAppSettings().timezone)
-    notifyClients("Invalid timezone '" + settingsManager.getAppSettings().timezone + "', using '" + timezone + "' instead. Please check your settings.");
+  applyTimeSettings();
 
   // webserver for normal operating or wifi config?
   if (currentMode == Mode::wificonfig)
@@ -1179,8 +1194,8 @@ void startWebserver()
         settings.scanColor = request->arg("scanColor").toInt();
         settings.matchColor = request->arg("matchColor").toInt();
         settingsManager.saveAppSettings(settings);
-        request->redirect("/");  
-        shouldReboot = true;
+        applySettingsRequested = true; // applied by the loop task, no reboot needed
+        request->redirect("/settings");
       } else {
         request->send(SPIFFS, "/settings.html", String(), false, processor);
       } });
@@ -1240,9 +1255,10 @@ void startWebserver()
         settings.topicOpenDoor = sanitizeTopic(request->arg("t_openDoor"), "openDoor");
         settings.haDiscovery = request->hasArg("ha_discovery");
         settings.mqttEnroll = request->hasArg("mqtt_enroll");
+        oldLwtTopic = mqttTopic(settingsManager.getAppSettings().topicLwt);
         settingsManager.saveAppSettings(settings);
-        request->redirect("/");
-        shouldReboot = true;
+        applyMqttRequested = true; // reconnect is done by the loop task, no reboot needed
+        request->redirect("/mqtt");
       } else {
         request->send(SPIFFS, "/mqtt.html", String(), false, processor);
       } });
@@ -1481,8 +1497,14 @@ void startWebserver()
     request->redirect("/");
     shouldReboot = true; });
 
+  // the stylesheet is stored gzip compressed (19kB instead of 121kB) and may be cached by the browser,
+  // so it is only transferred once instead of on every page load
   webServer.on("/bootstrap.min.css", HTTP_GET, [](AsyncWebServerRequest *request)
-               { request->send(SPIFFS, "/bootstrap.min.css", "text/css"); });
+               {
+    AsyncWebServerResponse *response = request->beginResponse(SPIFFS, "/bootstrap.min.css.gz", "text/css");
+    response->addHeader("Content-Encoding", "gzip");
+    response->addHeader("Cache-Control", "public, max-age=2592000");
+    request->send(response); });
 
   // OTA update handler, must be registered only once (a second unauthenticated registration would win over the authenticated one)
   if (currentMode == Mode::wificonfig || settingsManager.getAppSettings().webPassword.isEmpty())
@@ -2005,6 +2027,82 @@ void connectMqttClient()
   }
 }
 
+// (re)configures the MQTT client and connects, called at startup and when the MQTT settings are saved
+void initMqtt()
+{
+  // PubSubClient only stores the pointer to the hostname, so it has to be kept in a global variable.
+  // Using the hostname (instead of a once resolved IP) lets the client resolve it again on every reconnect.
+  mqttHostname = splitIpAndPort(settingsManager.getAppSettings().mqttServer, mqttPort);
+  mqttConfigValid = true;
+  Serial.println("MQTT server: " + mqttHostname + ":" + mqttPort);
+  mqttClient.setServer(mqttHostname.c_str(), mqttPort);
+  mqttClient.setBufferSize(1536); // needed for Home Assistant discovery payloads
+  mqttClient.setKeepAlive(settingsManager.getAppSettings().mqttKeepAlive);
+  mqttClient.setCallback(mqttCallback);
+  connectMqttClient();
+  mqttReconnectPreviousMillis = millis();
+}
+
+void setupRadarPin()
+{
+  const AppSettings &appSettings = settingsManager.getAppSettings();
+  presenceDetected = false;
+  presenceChangeMillis = 0;
+  if (appSettings.radarEnabled && isRadarPinAllowed(appSettings.radarPin))
+  {
+    // GPIO 34-39 have no internal pull resistors, the LD2410 output is push-pull anyway
+    if (appSettings.radarPin >= 34)
+      pinMode(appSettings.radarPin, INPUT);
+    else
+      pinMode(appSettings.radarPin, appSettings.radarActiveHigh ? INPUT_PULLDOWN : INPUT_PULLUP);
+  }
+}
+
+// applies the settings of the settings page without a reboot (runs in the loop task, it talks to the sensor)
+void applySettings()
+{
+  const AppSettings &settings = settingsManager.getAppSettings();
+  accessControl.configure(settings.failMax, settings.failWindow, settings.lockoutTime);
+  setupRadarPin();
+  applyTimeSettings();
+  if (settings.webPassword.isEmpty())
+    updateServer.updateCredentials(emptyString, emptyString);
+  else
+    updateServer.updateCredentials(webServerUser, settings.webPassword);
+  if (fingerManager.connected)
+    fingerManager.configTouchRingActive(settings.touchRingActiveColor, settings.touchRingActiveSequence, settings.scanColor, settings.matchColor);
+  updateNightMode();
+  updateLedSuppression();
+  if (fingerManager.connected)
+    fingerManager.setLedRingReady();
+  if (mqttClient.connected())
+  {
+    publishFeatureStates();
+    publishHaDiscovery(); // e.g. presence entity appears/disappears with the radar setting
+  }
+  notifyClients("Settings saved and applied.");
+}
+
+// applies the MQTT settings without a reboot: disconnect and connect with the new settings
+void applyMqttSettings()
+{
+  if (mqttClient.connected())
+  {
+    // the old LWT topic would otherwise stay "Online" forever if the topic name was changed
+    mqttClient.publish(oldLwtTopic.c_str(), MQTT_LWT_PAYLOAD_OFFLINE, MQTT_LWT_RETAIN);
+    mqttClient.disconnect();
+  }
+  mqttWasConnected = false; // no "connection lost" message for this intended disconnect
+  if (settingsManager.getAppSettings().mqttServer.isEmpty())
+  {
+    mqttConfigValid = false;
+    notifyClients("MQTT settings saved, no broker configured.");
+    return;
+  }
+  notifyClients("MQTT settings saved, reconnecting...");
+  initMqtt();
+}
+
 void publishMatchReset(const AppSettings &settings, bool retain, bool ring)
 {
   mqttClient.publish(mqttTopic(settings.topicRing).c_str(), ring ? settings.payloadOn.c_str() : settings.payloadOff.c_str(), retain);
@@ -2188,14 +2286,7 @@ void setup()
   const AppSettings &appSettings = settingsManager.getAppSettings();
   accessControl.configure(appSettings.failMax, appSettings.failWindow, appSettings.lockoutTime);
   accessControl.loadSchedules();
-  if (appSettings.radarEnabled && isRadarPinAllowed(appSettings.radarPin))
-  {
-    // GPIO 34-39 have no internal pull resistors, the LD2410 output is push-pull anyway
-    if (appSettings.radarPin >= 34)
-      pinMode(appSettings.radarPin, INPUT);
-    else
-      pinMode(appSettings.radarPin, appSettings.radarActiveHigh ? INPUT_PULLDOWN : INPUT_PULLUP);
-  }
+  setupRadarPin();
 
   fingerManager.connect();
 
@@ -2225,17 +2316,7 @@ void setup()
       }
       else
       {
-        // PubSubClient only stores the pointer to the hostname, so it has to be kept in a global variable.
-        // Using the hostname (instead of a once resolved IP) lets the client resolve it again on every reconnect.
-        mqttHostname = splitIpAndPort(settingsManager.getAppSettings().mqttServer, mqttPort);
-        mqttConfigValid = true;
-        Serial.println("MQTT server: " + mqttHostname + ":" + mqttPort);
-        mqttClient.setServer(mqttHostname.c_str(), mqttPort);
-        mqttClient.setBufferSize(1536); // needed for Home Assistant discovery payloads
-        mqttClient.setKeepAlive(settingsManager.getAppSettings().mqttKeepAlive);
-        mqttClient.setCallback(mqttCallback);
-        connectMqttClient();
-        mqttReconnectPreviousMillis = millis();
+        initMqtt();
       }
       if (fingerManager.connected)
       {
@@ -2334,6 +2415,18 @@ void loop()
 
     if (mqttClient.connected() && currentMillis - lastInfoPublishMillis >= 60000ul)
       publishInfo();
+
+    if (applySettingsRequested)
+    {
+      applySettingsRequested = false;
+      applySettings();
+    }
+
+    if (applyMqttRequested)
+    {
+      applyMqttRequested = false;
+      applyMqttSettings();
+    }
 
     if (clearEventsRequested)
     {
