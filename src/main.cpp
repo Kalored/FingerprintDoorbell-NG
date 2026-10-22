@@ -71,7 +71,6 @@ AsyncEventSource events("/events"); // event source (Server-Sent events)
 
 
 const char *webServerUser = "admin"; // User name for authentication
-#define MQTT_LWT_TOPIC "LWT"
 #define MQTT_LWT_RETAIN true
 #define MQTT_LWT_QOS 2
 #define MQTT_LWT_PAYLOAD_ONLINE "Online"
@@ -200,9 +199,49 @@ String splitIpAndPort(String mqttServerConfigString, u16_t &mqttPort)
   else
   {
     mqttHostname = mqttServerConfigString;
-    mqttPort = 1883;
+    mqttPort = settingsManager.getAppSettings().mqttPort;
   }
   return mqttHostname;
+}
+
+// full topic for a sub topic below the configured root topic
+String mqttTopic(const String &subTopic)
+{
+  const String &root = settingsManager.getAppSettings().mqttRootTopic;
+  if (root.isEmpty())
+    return subTopic;
+  return root + "/" + subTopic;
+}
+
+// commands accept the configured payloads as well as the common on/off variants
+bool isOnPayload(const String &payload)
+{
+  return payload.equalsIgnoreCase(settingsManager.getAppSettings().payloadOn) || payload.equalsIgnoreCase("on") || payload.equalsIgnoreCase("true") || payload == "1";
+}
+
+bool isOffPayload(const String &payload)
+{
+  return payload.equalsIgnoreCase(settingsManager.getAppSettings().payloadOff) || payload.equalsIgnoreCase("off") || payload.equalsIgnoreCase("false") || payload == "0";
+}
+
+const char *onOffPayload(bool state)
+{
+  return state ? settingsManager.getAppSettings().payloadOn.c_str() : settingsManager.getAppSettings().payloadOff.c_str();
+}
+
+// cleans up a topic entered in the web UI: no wildcards, no leading/trailing slashes, default if empty
+String sanitizeTopic(String topic, const char *defaultTopic, bool allowEmpty = false)
+{
+  topic.trim();
+  topic.replace("#", "");
+  topic.replace("+", "");
+  while (topic.startsWith("/"))
+    topic.remove(0, 1);
+  while (topic.endsWith("/"))
+    topic.remove(topic.length() - 1);
+  if (topic.isEmpty() && !allowEmpty)
+    return String(defaultTopic);
+  return topic;
 }
 
 /* wait for maintenance mode or timeout 5s */
@@ -407,6 +446,70 @@ String processor(const String &var)
   {
     return htmlEscape(settingsManager.getAppSettings().mqttRootTopic);
   }
+  else if (var == "MQTT_PORT")
+  {
+    return String(settingsManager.getAppSettings().mqttPort);
+  }
+  else if (var == "MQTT_CLIENTID")
+  {
+    return htmlEscape(settingsManager.getAppSettings().mqttClientId);
+  }
+  else if (var == "MQTT_KEEPALIVE")
+  {
+    return String(settingsManager.getAppSettings().mqttKeepAlive);
+  }
+  else if (var == "MQTT_RETAIN")
+  {
+    return settingsManager.getAppSettings().mqttRetain ? Checked : "";
+  }
+  else if (var == "MQTT_PUBLISHLOG")
+  {
+    return settingsManager.getAppSettings().mqttPublishLog ? Checked : "";
+  }
+  else if (var == "PAYLOAD_ON")
+  {
+    return htmlEscape(settingsManager.getAppSettings().payloadOn);
+  }
+  else if (var == "PAYLOAD_OFF")
+  {
+    return htmlEscape(settingsManager.getAppSettings().payloadOff);
+  }
+  else if (var == "T_LWT")
+  {
+    return htmlEscape(settingsManager.getAppSettings().topicLwt);
+  }
+  else if (var == "T_RING")
+  {
+    return htmlEscape(settingsManager.getAppSettings().topicRing);
+  }
+  else if (var == "T_MATCHID")
+  {
+    return htmlEscape(settingsManager.getAppSettings().topicMatchId);
+  }
+  else if (var == "T_MATCHNAME")
+  {
+    return htmlEscape(settingsManager.getAppSettings().topicMatchName);
+  }
+  else if (var == "T_MATCHCONF")
+  {
+    return htmlEscape(settingsManager.getAppSettings().topicMatchConfidence);
+  }
+  else if (var == "T_LASTLOG")
+  {
+    return htmlEscape(settingsManager.getAppSettings().topicLastLog);
+  }
+  else if (var == "T_IGNORERING")
+  {
+    return htmlEscape(settingsManager.getAppSettings().topicIgnoreTouchRing);
+  }
+  else if (var == "T_LEDRING")
+  {
+    return htmlEscape(settingsManager.getAppSettings().topicLedRing);
+  }
+  else if (var == "T_OPENDOOR")
+  {
+    return htmlEscape(settingsManager.getAppSettings().topicOpenDoor);
+  }
   else if (var == "HA_DISCOVERY")
   {
     return settingsManager.getAppSettings().haDiscovery ? Checked : "";
@@ -531,8 +634,8 @@ void notifyClients(String message)
   addLogMessage(messageWithTimestamp);
   events.send(getLogMessagesAsHtml().c_str(), "message", millis(), 1000);
 
-  String mqttRootTopic = settingsManager.getAppSettings().mqttRootTopic;
-  mqttClient.publish((String(mqttRootTopic) + "/lastLogMessage").c_str(), message.c_str());
+  if (settingsManager.getAppSettings().mqttPublishLog)
+    mqttClient.publish(mqttTopic(settingsManager.getAppSettings().topicLastLog).c_str(), message.c_str());
 }
 
 void updateClientsFingerlist(String fingerlist)
@@ -776,12 +879,46 @@ void startWebserver()
         else
           settings.webPassword = request->arg("web_password");
         settings.mqttServer = request->arg("mqtt_server");
+        settings.mqttServer.trim();
+        settings.mqttPort = request->arg("mqtt_port").toInt();
+        if (settings.mqttPort == 0)
+          settings.mqttPort = 1883;
+        int colon = settings.mqttServer.indexOf(':');
+        if (colon >= 0) // old "server:port" notation -> move port to its own field
+        {
+          long port = settings.mqttServer.substring(colon + 1).toInt();
+          if (port > 0 && port <= 65535)
+            settings.mqttPort = port;
+          settings.mqttServer = settings.mqttServer.substring(0, colon);
+        }
         settings.mqttUsername = request->arg("mqtt_username");
         if (request->arg("mqtt_password").equals("********")) // password is replaced by wildcards when given to the browser, so if the user didn't changed it, don't save it
           settings.mqttPassword = settingsManager.getAppSettings().mqttPassword; // use the old, already saved, one
         else
           settings.mqttPassword = request->arg("mqtt_password");
-        settings.mqttRootTopic = request->arg("mqtt_rootTopic");
+        settings.mqttRootTopic = sanitizeTopic(request->arg("mqtt_rootTopic"), "fingerprintDoorbell", true);
+        settings.mqttClientId = request->arg("mqtt_clientId");
+        settings.mqttClientId.trim();
+        settings.mqttKeepAlive = constrain(request->arg("mqtt_keepAlive").toInt(), 5, 300);
+        settings.mqttRetain = request->hasArg("mqtt_retain");
+        settings.mqttPublishLog = request->hasArg("mqtt_publishLog");
+        settings.payloadOn = request->arg("payload_on");
+        settings.payloadOn.trim();
+        if (settings.payloadOn.isEmpty())
+          settings.payloadOn = "on";
+        settings.payloadOff = request->arg("payload_off");
+        settings.payloadOff.trim();
+        if (settings.payloadOff.isEmpty())
+          settings.payloadOff = "off";
+        settings.topicLwt = sanitizeTopic(request->arg("t_lwt"), "LWT");
+        settings.topicRing = sanitizeTopic(request->arg("t_ring"), "ring");
+        settings.topicMatchId = sanitizeTopic(request->arg("t_matchId"), "matchId");
+        settings.topicMatchName = sanitizeTopic(request->arg("t_matchName"), "matchName");
+        settings.topicMatchConfidence = sanitizeTopic(request->arg("t_matchConf"), "matchConfidence");
+        settings.topicLastLog = sanitizeTopic(request->arg("t_lastLog"), "lastLogMessage");
+        settings.topicIgnoreTouchRing = sanitizeTopic(request->arg("t_ignoreRing"), "ignoreTouchRing");
+        settings.topicLedRing = sanitizeTopic(request->arg("t_ledRing"), "ledRing");
+        settings.topicOpenDoor = sanitizeTopic(request->arg("t_openDoor"), "openDoor");
         settings.haDiscovery = request->hasArg("ha_discovery");
         settings.ntpServer = request->arg("ntpServer");
         settings.timezone = request->arg("timezone");
@@ -909,9 +1046,9 @@ void startWebserver()
 // publish the current state of all switchable options (retained, so the state is also known after a restart of the home automation)
 void publishSwitchStates()
 {
-  String mqttRootTopic = settingsManager.getAppSettings().mqttRootTopic;
-  mqttClient.publish((mqttRootTopic + "/ignoreTouchRing/state").c_str(), fingerManager.getIgnoreTouchRing() ? "on" : "off", true);
-  mqttClient.publish((mqttRootTopic + "/ledRing/state").c_str(), fingerManager.getLedRingEnabled() ? "on" : "off", true);
+  const AppSettings &settings = settingsManager.getAppSettings();
+  mqttClient.publish(mqttTopic(settings.topicIgnoreTouchRing + "/state").c_str(), onOffPayload(fingerManager.getIgnoreTouchRing()), true);
+  mqttClient.publish(mqttTopic(settings.topicLedRing + "/state").c_str(), onOffPayload(fingerManager.getLedRingEnabled()), true);
 }
 
 // publish (or remove) one Home Assistant discovery config
@@ -924,10 +1061,9 @@ void publishHaDiscoveryEntity(const String &component, const String &objectId, c
     return;
   }
 
-  String mqttRootTopic = jsonEscape(settingsManager.getAppSettings().mqttRootTopic);
   String payload = "{" + specificConfig +
                    ",\"unique_id\":\"" + nodeId + "_" + objectId + "\"" +
-                   ",\"availability_topic\":\"" + mqttRootTopic + "/" + MQTT_LWT_TOPIC + "\"" +
+                   ",\"availability_topic\":\"" + jsonEscape(mqttTopic(settingsManager.getAppSettings().topicLwt)) + "\"" +
                    ",\"payload_available\":\"" + MQTT_LWT_PAYLOAD_ONLINE + "\"" +
                    ",\"payload_not_available\":\"" + MQTT_LWT_PAYLOAD_OFFLINE + "\"" +
                    "," + deviceConfig + "}";
@@ -935,15 +1071,22 @@ void publishHaDiscoveryEntity(const String &component, const String &objectId, c
     Serial.println("Failed to publish HA discovery config for " + objectId);
 }
 
+// JSON snippet "key":"<full topic>"
+String jsonTopic(const char *key, const String &subTopic)
+{
+  return String("\"") + key + "\":\"" + jsonEscape(mqttTopic(subTopic)) + "\"";
+}
+
 // Home Assistant MQTT discovery, see https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery
 void publishHaDiscovery()
 {
-  bool enabled = settingsManager.getAppSettings().haDiscovery;
+  const AppSettings &settings = settingsManager.getAppSettings();
+  bool enabled = settings.haDiscovery;
   String mac = WiFi.macAddress();
   mac.replace(":", "");
   mac.toLowerCase();
   String nodeId = "fpdoorbell_" + mac;
-  String t = jsonEscape(settingsManager.getAppSettings().mqttRootTopic) + "/";
+  String onOff = ",\"payload_on\":\"" + jsonEscape(settings.payloadOn) + "\",\"payload_off\":\"" + jsonEscape(settings.payloadOff) + "\"";
 
   String device = String("\"device\":{\"identifiers\":[\"") + nodeId + "\"]" +
                   ",\"name\":\"" + jsonEscape(settingsManager.getWifiSettings().hostname) + "\"" +
@@ -953,28 +1096,28 @@ void publishHaDiscovery()
                   ",\"configuration_url\":\"http://" + WiFi.localIP().toString() + "\"}";
 
   publishHaDiscoveryEntity("binary_sensor", "ring", nodeId,
-                           "\"name\":\"Ring\",\"icon\":\"mdi:doorbell\",\"state_topic\":\"" + t + "ring\",\"payload_on\":\"on\",\"payload_off\":\"off\"",
+                           "\"name\":\"Ring\",\"icon\":\"mdi:doorbell\"," + jsonTopic("state_topic", settings.topicRing) + onOff,
                            device, enabled);
   publishHaDiscoveryEntity("sensor", "match_id", nodeId,
-                           "\"name\":\"Match ID\",\"icon\":\"mdi:fingerprint\",\"state_topic\":\"" + t + "matchId\"",
+                           "\"name\":\"Match ID\",\"icon\":\"mdi:fingerprint\"," + jsonTopic("state_topic", settings.topicMatchId),
                            device, enabled);
   publishHaDiscoveryEntity("sensor", "match_name", nodeId,
-                           "\"name\":\"Match name\",\"icon\":\"mdi:account\",\"state_topic\":\"" + t + "matchName\"",
+                           "\"name\":\"Match name\",\"icon\":\"mdi:account\"," + jsonTopic("state_topic", settings.topicMatchName),
                            device, enabled);
   publishHaDiscoveryEntity("sensor", "match_confidence", nodeId,
-                           "\"name\":\"Match confidence\",\"icon\":\"mdi:percent\",\"state_topic\":\"" + t + "matchConfidence\"",
+                           "\"name\":\"Match confidence\",\"icon\":\"mdi:percent\"," + jsonTopic("state_topic", settings.topicMatchConfidence),
                            device, enabled);
   publishHaDiscoveryEntity("sensor", "last_log_message", nodeId,
-                           "\"name\":\"Last log message\",\"icon\":\"mdi:text\",\"entity_category\":\"diagnostic\",\"state_topic\":\"" + t + "lastLogMessage\"",
-                           device, enabled);
+                           "\"name\":\"Last log message\",\"icon\":\"mdi:text\",\"entity_category\":\"diagnostic\"," + jsonTopic("state_topic", settings.topicLastLog),
+                           device, enabled && settings.mqttPublishLog);
   publishHaDiscoveryEntity("switch", "ignore_touch_ring", nodeId,
-                           "\"name\":\"Ignore touch ring\",\"icon\":\"mdi:weather-pouring\",\"entity_category\":\"config\",\"command_topic\":\"" + t + "ignoreTouchRing\",\"state_topic\":\"" + t + "ignoreTouchRing/state\",\"payload_on\":\"on\",\"payload_off\":\"off\",\"retain\":true",
+                           "\"name\":\"Ignore touch ring\",\"icon\":\"mdi:weather-pouring\",\"entity_category\":\"config\"," + jsonTopic("command_topic", settings.topicIgnoreTouchRing) + "," + jsonTopic("state_topic", settings.topicIgnoreTouchRing + "/state") + onOff + ",\"retain\":true",
                            device, enabled);
   publishHaDiscoveryEntity("switch", "led_ring", nodeId,
-                           "\"name\":\"LED ring\",\"icon\":\"mdi:led-on\",\"entity_category\":\"config\",\"command_topic\":\"" + t + "ledRing\",\"state_topic\":\"" + t + "ledRing/state\",\"payload_on\":\"on\",\"payload_off\":\"off\",\"retain\":true",
+                           "\"name\":\"LED ring\",\"icon\":\"mdi:led-on\",\"entity_category\":\"config\"," + jsonTopic("command_topic", settings.topicLedRing) + "," + jsonTopic("state_topic", settings.topicLedRing + "/state") + onOff + ",\"retain\":true",
                            device, enabled);
   publishHaDiscoveryEntity("button", "open_door", nodeId,
-                           "\"name\":\"Open door\",\"icon\":\"mdi:door-open\",\"command_topic\":\"" + t + "openDoor\",\"payload_press\":\"true\"",
+                           "\"name\":\"Open door\",\"icon\":\"mdi:door-open\"," + jsonTopic("command_topic", settings.topicOpenDoor) + ",\"payload_press\":\"" + jsonEscape(settings.payloadOn) + "\"",
                            device, enabled);
 }
 
@@ -995,35 +1138,35 @@ void mqttCallback(char *topic, byte *message, unsigned int length)
   Serial.println();
 
   // Check incomming message for interesting topics
-  if (topicStr == String(settingsManager.getAppSettings().mqttRootTopic) + "/ignoreTouchRing")
+  if (topicStr == mqttTopic(settingsManager.getAppSettings().topicIgnoreTouchRing))
   {
-    if (messageTemp == "on")
+    if (isOnPayload(messageTemp))
     {
       fingerManager.setIgnoreTouchRing(true);
     }
-    else if (messageTemp == "off")
+    else if (isOffPayload(messageTemp))
     {
       fingerManager.setIgnoreTouchRing(false);
     }
     publishSwitchStates();
   }
 
-  if (topicStr == String(settingsManager.getAppSettings().mqttRootTopic) + "/ledRing")
+  if (topicStr == mqttTopic(settingsManager.getAppSettings().topicLedRing))
   {
-    if (messageTemp == "on")
+    if (isOnPayload(messageTemp))
     {
       fingerManager.setLedRingEnabled(true);
     }
-    else if (messageTemp == "off")
+    else if (isOffPayload(messageTemp))
     {
       fingerManager.setLedRingEnabled(false);
     }
     publishSwitchStates();
   }
 
-  if (topicStr == String(settingsManager.getAppSettings().mqttRootTopic) + "/openDoor")
+  if (topicStr == mqttTopic(settingsManager.getAppSettings().topicOpenDoor))
   {
-    if (messageTemp == "true")
+    if (isOnPayload(messageTemp))
     {
       digitalWrite(dooropenerOutputPin, HIGH);
       Serial.println("MQTT message received: Open the door!");
@@ -1033,24 +1176,24 @@ void mqttCallback(char *topic, byte *message, unsigned int length)
   }
 
 #ifdef CUSTOM_GPIOS
-  if (topicStr == String(settingsManager.getAppSettings().mqttRootTopic) + "/customOutput1")
+  if (topicStr == mqttTopic("customOutput1"))
   {
-    if (messageTemp == "on")
+    if (isOnPayload(messageTemp))
     {
       digitalWrite(customOutput1, HIGH);
     }
-    else if (messageTemp == "off")
+    else if (isOffPayload(messageTemp))
     {
       digitalWrite(customOutput1, LOW);
     }
   }
-  if (topicStr == String(settingsManager.getAppSettings().mqttRootTopic) + "/customOutput2")
+  if (topicStr == mqttTopic("customOutput2"))
   {
-    if (messageTemp == "on")
+    if (isOnPayload(messageTemp))
     {
       digitalWrite(customOutput2, HIGH);
     }
-    else if (messageTemp == "off")
+    else if (isOffPayload(messageTemp))
     {
       digitalWrite(customOutput2, LOW);
     }
@@ -1067,11 +1210,12 @@ void connectMqttClient()
     bool connectResult;
 
     // connect with or witout authentication (an empty password is allowed if a username is given)
-    String lastWillTopic = settingsManager.getAppSettings().mqttRootTopic + "/" + MQTT_LWT_TOPIC;
+    String lastWillTopic = mqttTopic(settingsManager.getAppSettings().topicLwt);
+    String clientId = settingsManager.getAppSettings().mqttClientId.isEmpty() ? settingsManager.getWifiSettings().hostname : settingsManager.getAppSettings().mqttClientId;
     if (settingsManager.getAppSettings().mqttUsername.isEmpty())
-      connectResult = mqttClient.connect(settingsManager.getWifiSettings().hostname.c_str(), lastWillTopic.c_str(), MQTT_LWT_QOS, MQTT_LWT_RETAIN, MQTT_LWT_PAYLOAD_OFFLINE);
+      connectResult = mqttClient.connect(clientId.c_str(), lastWillTopic.c_str(), MQTT_LWT_QOS, MQTT_LWT_RETAIN, MQTT_LWT_PAYLOAD_OFFLINE);
     else
-      connectResult = mqttClient.connect(settingsManager.getWifiSettings().hostname.c_str(), settingsManager.getAppSettings().mqttUsername.c_str(), settingsManager.getAppSettings().mqttPassword.c_str(), lastWillTopic.c_str(), MQTT_LWT_QOS, MQTT_LWT_RETAIN, MQTT_LWT_PAYLOAD_OFFLINE);
+      connectResult = mqttClient.connect(clientId.c_str(), settingsManager.getAppSettings().mqttUsername.c_str(), settingsManager.getAppSettings().mqttPassword.c_str(), lastWillTopic.c_str(), MQTT_LWT_QOS, MQTT_LWT_RETAIN, MQTT_LWT_PAYLOAD_OFFLINE);
 
     if (connectResult)
     {
@@ -1080,14 +1224,14 @@ void connectMqttClient()
       mqttConnectCount++;
       mqttWasConnected = true;
       // LWT publish
-      mqttClient.publish((settingsManager.getAppSettings().mqttRootTopic + "/" + MQTT_LWT_TOPIC).c_str(), MQTT_LWT_PAYLOAD_ONLINE, MQTT_LWT_RETAIN);
+      mqttClient.publish(lastWillTopic.c_str(), MQTT_LWT_PAYLOAD_ONLINE, MQTT_LWT_RETAIN);
       // Subscribe
-      mqttClient.subscribe((settingsManager.getAppSettings().mqttRootTopic + "/ignoreTouchRing").c_str(), 1); // QoS = 1 (at least once)
-      mqttClient.subscribe((settingsManager.getAppSettings().mqttRootTopic + "/openDoor").c_str(), 1); // QoS = 1 (at least once)
-      mqttClient.subscribe((settingsManager.getAppSettings().mqttRootTopic + "/ledRing").c_str(), 1); // QoS = 1 (at least once)
+      mqttClient.subscribe(mqttTopic(settingsManager.getAppSettings().topicIgnoreTouchRing).c_str(), 1); // QoS = 1 (at least once)
+      mqttClient.subscribe(mqttTopic(settingsManager.getAppSettings().topicOpenDoor).c_str(), 1); // QoS = 1 (at least once)
+      mqttClient.subscribe(mqttTopic(settingsManager.getAppSettings().topicLedRing).c_str(), 1); // QoS = 1 (at least once)
 #ifdef CUSTOM_GPIOS
-      mqttClient.subscribe((settingsManager.getAppSettings().mqttRootTopic + "/customOutput1").c_str(), 1); // QoS = 1 (at least once)
-      mqttClient.subscribe((settingsManager.getAppSettings().mqttRootTopic + "/customOutput2").c_str(), 1); // QoS = 1 (at least once)
+      mqttClient.subscribe(mqttTopic("customOutput1").c_str(), 1); // QoS = 1 (at least once)
+      mqttClient.subscribe(mqttTopic("customOutput2").c_str(), 1); // QoS = 1 (at least once)
 #endif
       publishSwitchStates();
       publishHaDiscovery();
@@ -1110,7 +1254,8 @@ void connectMqttClient()
 void doScan()
 {
   Match match = fingerManager.scanFingerprint();
-  String mqttRootTopic = settingsManager.getAppSettings().mqttRootTopic;
+  const AppSettings &settings = settingsManager.getAppSettings();
+  bool retain = settings.mqttRetain;
   switch (match.scanResult)
   {
   case ScanResult::noFinger:
@@ -1118,10 +1263,10 @@ void doScan()
     if (match.scanResult != lastMatch.scanResult)
     {
       Serial.println("no finger");
-      mqttClient.publish((String(mqttRootTopic) + "/ring").c_str(), "off");
-      mqttClient.publish((String(mqttRootTopic) + "/matchId").c_str(), "-1");
-      mqttClient.publish((String(mqttRootTopic) + "/matchName").c_str(), "");
-      mqttClient.publish((String(mqttRootTopic) + "/matchConfidence").c_str(), "-1");
+      mqttClient.publish(mqttTopic(settings.topicRing).c_str(), settings.payloadOff.c_str(), retain);
+      mqttClient.publish(mqttTopic(settings.topicMatchId).c_str(), "-1", retain);
+      mqttClient.publish(mqttTopic(settings.topicMatchName).c_str(), "", retain);
+      mqttClient.publish(mqttTopic(settings.topicMatchConfidence).c_str(), "-1", retain);
     }
     break;
   case ScanResult::matchFound:
@@ -1135,10 +1280,10 @@ void doScan()
           opendoor = true;
         if (opendoor)
           digitalWrite(dooropenerOutputPin, HIGH);
-        mqttClient.publish((String(mqttRootTopic) + "/ring").c_str(), "off");
-        mqttClient.publish((String(mqttRootTopic) + "/matchId").c_str(), String(match.matchId).c_str());
-        mqttClient.publish((String(mqttRootTopic) + "/matchName").c_str(), match.matchName.c_str());
-        mqttClient.publish((String(mqttRootTopic) + "/matchConfidence").c_str(), String(match.matchConfidence).c_str());
+        mqttClient.publish(mqttTopic(settings.topicRing).c_str(), settings.payloadOff.c_str(), retain);
+        mqttClient.publish(mqttTopic(settings.topicMatchId).c_str(), String(match.matchId).c_str(), retain);
+        mqttClient.publish(mqttTopic(settings.topicMatchName).c_str(), match.matchName.c_str(), retain);
+        mqttClient.publish(mqttTopic(settings.topicMatchConfidence).c_str(), String(match.matchConfidence).c_str(), retain);
         Serial.println("MQTT message sent: Open the door!");
         if (opendoor)
         {
@@ -1158,10 +1303,10 @@ void doScan()
     if (match.scanResult != lastMatch.scanResult)
     {
       digitalWrite(doorbellOutputPin, HIGH);
-      mqttClient.publish((String(mqttRootTopic) + "/ring").c_str(), "on");
-      mqttClient.publish((String(mqttRootTopic) + "/matchId").c_str(), "-1");
-      mqttClient.publish((String(mqttRootTopic) + "/matchName").c_str(), "");
-      mqttClient.publish((String(mqttRootTopic) + "/matchConfidence").c_str(), "-1");
+      mqttClient.publish(mqttTopic(settings.topicRing).c_str(), settings.payloadOn.c_str(), retain);
+      mqttClient.publish(mqttTopic(settings.topicMatchId).c_str(), "-1", retain);
+      mqttClient.publish(mqttTopic(settings.topicMatchName).c_str(), "", retain);
+      mqttClient.publish(mqttTopic(settings.topicMatchConfidence).c_str(), "-1", retain);
       Serial.println("MQTT message sent: ring the bell!");
       delay(1000);
       digitalWrite(doorbellOutputPin, LOW);
@@ -1270,6 +1415,7 @@ void setup()
         Serial.println("MQTT server: " + mqttHostname + ":" + mqttPort);
         mqttClient.setServer(mqttHostname.c_str(), mqttPort);
         mqttClient.setBufferSize(1536); // needed for Home Assistant discovery payloads
+        mqttClient.setKeepAlive(settingsManager.getAppSettings().mqttKeepAlive);
         mqttClient.setCallback(mqttCallback);
         connectMqttClient();
         mqttReconnectPreviousMillis = millis();
@@ -1377,21 +1523,20 @@ void loop()
   i1 = (digitalRead(customInput1) == HIGH);
   i2 = (digitalRead(customInput2) == HIGH);
 
-  String mqttRootTopic = settingsManager.getAppSettings().mqttRootTopic;
   if (i1 != customInput1Value)
   {
     if (i1)
-      mqttClient.publish((String(mqttRootTopic) + "/customInput1").c_str(), "on");
+      mqttClient.publish(mqttTopic("customInput1").c_str(), onOffPayload(true));
     else
-      mqttClient.publish((String(mqttRootTopic) + "/customInput1").c_str(), "off");
+      mqttClient.publish(mqttTopic("customInput1").c_str(), onOffPayload(false));
   }
 
   if (i2 != customInput2Value)
   {
     if (i2)
-      mqttClient.publish((String(mqttRootTopic) + "/customInput2").c_str(), "on");
+      mqttClient.publish(mqttTopic("customInput2").c_str(), onOffPayload(true));
     else
-      mqttClient.publish((String(mqttRootTopic) + "/customInput2").c_str(), "off");
+      mqttClient.publish(mqttTopic("customInput2").c_str(), onOffPayload(false));
   }
 
   customInput1Value = i1;

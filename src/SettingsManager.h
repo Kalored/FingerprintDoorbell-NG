@@ -19,6 +19,23 @@ struct AppSettings
   String mqttPassword = "";
   String mqttRootTopic = "fingerprintDoorbell";
   bool haDiscovery = true;
+  uint16_t mqttPort = 1883;
+  String mqttClientId = ""; // empty = use hostname
+  uint16_t mqttKeepAlive = 15; // seconds
+  bool mqttRetain = false;     // publish event topics (ring, match...) with retain flag
+  bool mqttPublishLog = true;  // publish log messages to topicLastLog
+  String payloadOn = "on";     // used for ring and switch states, commands also accept on/true/1
+  String payloadOff = "off";
+  // sub topics below the root topic
+  String topicLwt = "LWT";
+  String topicRing = "ring";
+  String topicMatchId = "matchId";
+  String topicMatchName = "matchName";
+  String topicMatchConfidence = "matchConfidence";
+  String topicLastLog = "lastLogMessage";
+  String topicIgnoreTouchRing = "ignoreTouchRing";
+  String topicLedRing = "ledRing";
+  String topicOpenDoor = "openDoor";
   String ntpServer = "pool.ntp.org";
   String timezone = "CET-1CEST,M3.5.0,M10.5.0/3";
   String sensorPin = "00000000";
@@ -43,10 +60,10 @@ public:
   bool loadWifiSettings();
   bool loadAppSettings();
 
-  WifiSettings getWifiSettings();
+  const WifiSettings &getWifiSettings();
   void saveWifiSettings(WifiSettings newSettings);
 
-  AppSettings getAppSettings();
+  const AppSettings &getAppSettings();
   void saveAppSettings(AppSettings newSettings);
 
   bool isWifiConfigured();

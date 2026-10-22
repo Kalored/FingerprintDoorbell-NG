@@ -29,6 +29,22 @@ bool SettingsManager::loadAppSettings()
         appSettings.mqttPassword = preferences.getString("mqttPassword", String(""));
         appSettings.mqttRootTopic = preferences.getString("mqttRootTopic", String("fingerprintDoorbell"));
         appSettings.haDiscovery = preferences.getBool("haDiscovery", true);
+        appSettings.mqttPort = preferences.getUShort("mqttPort", 1883);
+        appSettings.mqttClientId = preferences.getString("mqttClientId", String(""));
+        appSettings.mqttKeepAlive = preferences.getUShort("mqttKeepAlive", 15);
+        appSettings.mqttRetain = preferences.getBool("mqttRetain", false);
+        appSettings.mqttPublishLog = preferences.getBool("mqttPubLog", true);
+        appSettings.payloadOn = preferences.getString("payloadOn", String("on"));
+        appSettings.payloadOff = preferences.getString("payloadOff", String("off"));
+        appSettings.topicLwt = preferences.getString("tLwt", String("LWT"));
+        appSettings.topicRing = preferences.getString("tRing", String("ring"));
+        appSettings.topicMatchId = preferences.getString("tMatchId", String("matchId"));
+        appSettings.topicMatchName = preferences.getString("tMatchName", String("matchName"));
+        appSettings.topicMatchConfidence = preferences.getString("tMatchConf", String("matchConfidence"));
+        appSettings.topicLastLog = preferences.getString("tLastLog", String("lastLogMessage"));
+        appSettings.topicIgnoreTouchRing = preferences.getString("tIgnoreRing", String("ignoreTouchRing"));
+        appSettings.topicLedRing = preferences.getString("tLedRing", String("ledRing"));
+        appSettings.topicOpenDoor = preferences.getString("tOpenDoor", String("openDoor"));
         appSettings.ntpServer = preferences.getString("ntpServer", String("pool.ntp.org"));
         appSettings.timezone = preferences.getString("timezone", String("CET-1CEST,M3.5.0,M10.5.0/3"));
         appSettings.sensorPin = preferences.getString("sensorPin", "00000000");
@@ -67,6 +83,22 @@ void SettingsManager::saveAppSettings()
     preferences.putString("mqttPassword", appSettings.mqttPassword);
     preferences.putString("mqttRootTopic", appSettings.mqttRootTopic);
     preferences.putBool("haDiscovery", appSettings.haDiscovery);
+    preferences.putUShort("mqttPort", appSettings.mqttPort);
+    preferences.putString("mqttClientId", appSettings.mqttClientId);
+    preferences.putUShort("mqttKeepAlive", appSettings.mqttKeepAlive);
+    preferences.putBool("mqttRetain", appSettings.mqttRetain);
+    preferences.putBool("mqttPubLog", appSettings.mqttPublishLog);
+    preferences.putString("payloadOn", appSettings.payloadOn);
+    preferences.putString("payloadOff", appSettings.payloadOff);
+    preferences.putString("tLwt", appSettings.topicLwt);
+    preferences.putString("tRing", appSettings.topicRing);
+    preferences.putString("tMatchId", appSettings.topicMatchId);
+    preferences.putString("tMatchName", appSettings.topicMatchName);
+    preferences.putString("tMatchConf", appSettings.topicMatchConfidence);
+    preferences.putString("tLastLog", appSettings.topicLastLog);
+    preferences.putString("tIgnoreRing", appSettings.topicIgnoreTouchRing);
+    preferences.putString("tLedRing", appSettings.topicLedRing);
+    preferences.putString("tOpenDoor", appSettings.topicOpenDoor);
     preferences.putString("ntpServer", appSettings.ntpServer);
     preferences.putString("timezone", appSettings.timezone);
     preferences.putString("sensorPin", appSettings.sensorPin);
@@ -79,7 +111,7 @@ void SettingsManager::saveAppSettings()
     preferences.end();
 }
 
-WifiSettings SettingsManager::getWifiSettings()
+const WifiSettings &SettingsManager::getWifiSettings()
 {
     return wifiSettings;
 }
@@ -90,7 +122,7 @@ void SettingsManager::saveWifiSettings(WifiSettings newSettings)
     saveWifiSettings();
 }
 
-AppSettings SettingsManager::getAppSettings()
+const AppSettings &SettingsManager::getAppSettings()
 {
     return appSettings;
 }

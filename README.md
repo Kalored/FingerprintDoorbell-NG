@@ -31,6 +31,8 @@ Changes in 0.6:
 - fix: enrollment could hang forever if the finger was not lifted
 - MQTT password is masked in the settings page, settings forms use POST (no passwords in URLs)
 - web pages use the local bootstrap.min.css instead of a CDN (works without internet)
+- all MQTT topics configurable in the web UI ("MQTT topics & options"), plus port, client id, keepalive, on/off payloads (e.g. true/false for ioBroker), retain flag and log publishing
+- connection diagnostics: reason of MQTT/WiFi connection losses in the log, counters on the system page
 
 Wishlist / Todo:
 - make GPIOs configurable
@@ -186,6 +188,8 @@ If enrollment has completed successfull you can now test if your fingerprint mat
 Matching fingerprints (and also ring events) are published as messages to your MQTT broker at certain topics. For this you will have to configure your MQTT Broker settings in FingerprintDoorbell. If your broker does not need authentification by username and password just leave this fields empty. You can also specify a custom root topic under which FingerprintDoorbell publishes its messages or leave the default "fingerprintDoorbell" if you're fine with that.
 
 <img  src="https://raw.githubusercontent.com/geronet1/FingerprintDoorbell/master/doc/images/web-settings.png"  width="300">
+
+All sub topics (and the on/off payloads) can be changed in the settings under "MQTT topics & options". The defaults are:
 
 | MQTT Topic                           | Action    | Values | 
 | ------------------------------------ | --------- | -------- |

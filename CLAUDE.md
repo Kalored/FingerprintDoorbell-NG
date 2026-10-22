@@ -41,7 +41,7 @@ pio run -t buildfs      # web UI (data/) -> spiffs.bin
 
 ## MQTT interface
 
-Root topic configurable (default `fingerprintDoorbell`):
+Root topic, every sub topic and the on/off payloads are configurable in the web UI (`AppSettings::topic*`, `payloadOn/Off`). Always build topics with `mqttTopic(settings.topicX)` and command checks with `isOnPayload()/isOffPayload()`, never hardcode them. Defaults:
 
 - Published: `LWT` (Online/Offline, retained), `ring`, `matchId`, `matchName`, `matchConfidence`, `lastLogMessage`, `ignoreTouchRing/state`, `ledRing/state` (states retained).
 - Subscribed: `ignoreTouchRing` and `ledRing` (on/off), `openDoor` (`true` pulses GPIO 23).
