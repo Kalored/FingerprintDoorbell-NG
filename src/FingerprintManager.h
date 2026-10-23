@@ -76,7 +76,10 @@ private:
 
 public:
   bool connected;
-  bool connect();
+  bool connect(bool quick = false); // quick: only one attempt, no 5s wait (used for reconnecting while running)
+  bool ping();                      // checks if the sensor answers (does not change "connected")
+  void markDisconnected();
+  void restartSerial(); // closes and reopens the sensor UART
   Match scanFingerprint();
   NewFinger enrollFinger(int id, String name);
   void deleteFinger(int id);

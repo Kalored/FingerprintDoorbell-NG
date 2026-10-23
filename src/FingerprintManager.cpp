@@ -3,7 +3,7 @@
 
 #include <Adafruit_Fingerprint.h>
 
-bool FingerprintManager::connect()
+bool FingerprintManager::connect(bool quick)
 {
 
   // initialize input pins
@@ -17,6 +17,11 @@ bool FingerprintManager::connect()
   if (finger.verifyPassword())
   {
     Serial.println("Found fingerprint sensor!");
+  }
+  else if (quick)
+  {
+    connected = false;
+    return connected;
   }
   else
   {
@@ -76,6 +81,25 @@ bool FingerprintManager::connect()
   return connected;
 
   // updateTouchState(false);
+}
+
+bool FingerprintManager::ping()
+{
+  return finger.verifyPassword();
+}
+
+void FingerprintManager::restartSerial()
+{
+  mySerial.end();
+  delay(100);
+  finger.begin(57600);
+  delay(50);
+}
+
+void FingerprintManager::markDisconnected()
+{
+  connected = false;
+  lastTouchState = false;
 }
 
 void FingerprintManager::updateTouchState(bool touched)

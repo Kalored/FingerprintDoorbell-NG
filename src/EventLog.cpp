@@ -80,6 +80,8 @@ const char *EventLog::getTypeName(uint8_t type)
   case EventType::backup: return "Backup";
   case EventType::restore: return "Restore";
   case EventType::ringSuppressed: return "Ring suppressed";
+  case EventType::sensorLost: return "Sensor lost";
+  case EventType::sensorRestored: return "Sensor restored";
   default: return "Unknown";
   }
 }

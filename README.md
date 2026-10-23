@@ -58,6 +58,11 @@ Changes in 0.7.3:
 - WiFi: scans and connects to the strongest access point of the configured network (helps with multiple APs / mesh), every second retry restarts the WiFi stack
 - WiFi disconnect reason (e.g. "15 4-way handshake timeout") in the log and on the system page
 
+Changes in 0.8.0:
+- **Fingerprint sensor supervision**: the sensor is checked every 10s. If it does not answer (cable/power problem) it is reported as lost in the log, event history, on the system page and over MQTT (`info/sensor` = online/offline, `info/sensorLost` = counter, Home Assistant entity "Fingerprint sensor"). While it is missing, the device keeps running and tries to reconnect every 15s for 3 minutes without a reboot (afterwards only the manual "Reconnect sensor" button on the System page reconnects it); after reconnecting the LED ring is restored and the sensor pairing is checked again.
+- **Traffic light** next to the device name in the top bar of every page: green = sensor ok, yellow = sensor does not answer / reconnecting, red = not connected (tooltip shows details, updates every 3s).
+- **"Reconnect sensor" button** on the System page: restarts the sensor serial port and connects again without rebooting the ESP32 (also available as `POST /sensor/reconnect`; status as JSON on `GET /sensor/status`).
+
 WiFi problems with multi-AP systems (e.g. TP-Link Omada): the ESP32 only supports 2.4 GHz and WPA2. If it needs long to connect, try for its SSID: WPA2-PSK (AES) only instead of WPA2/WPA3, PMF (management frame protection) disabled, 802.11r / fast roaming disabled, band steering disabled. A separate 2.4 GHz IoT SSID with these settings works best.
 
 Wishlist / Todo:
@@ -240,7 +245,7 @@ Additional topics of the newer features (fixed names below the root topic):
 | lastEvent | publish (retained) | last entry of the event history |
 | nightMode | publish (retained) | on/off |
 | presence | publish (retained) | on/off, radar sensor (only if enabled) |
-| info/rssi, info/uptime, info/ip, info/freeHeap, info/fingerCount, info/failedAttempts, info/wifiLost, info/mqttLost, info/version | publish (retained, every 60s) | diagnostic values |
+| info/rssi, info/uptime, info/ip, info/freeHeap, info/fingerCount, info/failedAttempts, info/wifiLost, info/mqttLost, info/version, info/sensor, info/sensorLost | publish (retained, every 60s) | diagnostic values |
 | enroll | subscribe | "5:Name" starts an enrollment for slot 5 (only if enabled on the MQTT page) |
 | enrollState | publish (retained) | idle / running / step n/5 / success / failed |
 

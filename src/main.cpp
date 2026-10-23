@@ -27,7 +27,7 @@ enum class Mode
   restore
 };
 
-const char *VersionInfo = "0.7.3";
+const char *VersionInfo = "0.8.0";
 
 // ===================================================================================================================
 // Caution: below are not the credentials for connecting to your home network, they are for the Access Point mode!!!
@@ -123,6 +123,64 @@ bool wifiWasConnected = false;
 unsigned long mqttConnectCount = 0;
 unsigned long mqttLostCount = 0;
 unsigned long wifiLostCount = 0;
+
+// fingerprint sensor supervision: the sensor is checked while running and reconnected automatically
+const unsigned long SENSOR_CHECK_INTERVAL = 10000ul; // ping while connected
+const unsigned long SENSOR_RETRY_INTERVAL = 15000ul; // reconnect attempts while missing
+const unsigned long SENSOR_RETRY_WINDOW = 180000ul; // automatic reconnect attempts stop after 3 minutes, then only manual reconnect
+const uint8_t SENSOR_MAX_FAILS = 3;                  // failed pings in a row until the sensor counts as lost
+unsigned long lastSensorCheckMillis = 0;
+unsigned long sensorStateSinceMillis = 0;
+unsigned long sensorLostCount = 0;
+uint8_t sensorPingFails = 0;
+bool sensorAutoRetryActive = false;    // automatic reconnecting within the retry window
+bool sensorReconnecting = false;       // manual or automatic reconnect in progress (yellow)
+bool sensorReconnectRequested = false; // set by the web UI, handled in the loop task
+
+String htmlEscape(const String &text);
+
+// traffic light: green = sensor ok, yellow = problems / reconnecting, red = not connected
+String sensorLightState()
+{
+  if (sensorReconnecting)
+    return "yellow";
+  if (!fingerManager.connected)
+    return "red";
+  if (sensorPingFails > 0)
+    return "yellow";
+  return "green";
+}
+
+String sensorStateText()
+{
+  unsigned long sec = (millis() - sensorStateSinceMillis) / 1000;
+  String since = sec < 120 ? String(sec) + " s" : (sec < 7200 ? String(sec / 60) + " min" : String(sec / 3600) + " h");
+  if (sensorReconnecting)
+    return String("reconnecting...");
+  if (fingerManager.connected)
+    return String("connected (since ") + since + ", " + sensorLostCount + " losses)";
+  if (!sensorAutoRetryActive)
+    return String("NOT CONNECTED since ") + since + " (automatic retries stopped, use Reconnect sensor on the System page)";
+  return String("NOT CONNECTED (since ") + since + ", " + sensorLostCount + " losses, retrying automatically)";
+}
+
+// traffic light for the navbar (next to the device name), updates itself every 3s
+String sensorLightHtml()
+{
+  String st = sensorLightState();
+  auto dot = [&](const char *id, const char *color, bool on)
+  {
+    return String("<span id=\"") + id + "\" style=\"display:inline-block;width:10px;height:10px;border-radius:5px;margin:0 2px;background:" + color + ";opacity:" + (on ? "1" : "0.18") + "\"></span>";
+  };
+  String html = "<span id=\"sensorLight\" title=\"" + htmlEscape(sensorStateText()) + "\" style=\"display:inline-flex;align-items:center;vertical-align:middle;margin-left:12px;padding:4px 6px;border-radius:9px;background:#111\">";
+  html += dot("slR", "#e53935", st == "red");
+  html += dot("slY", "#fdd835", st == "yellow");
+  html += dot("slG", "#43a047", st == "green");
+  html += "</span><script>(function(){function u(s,t){var o={slR:'red',slY:'yellow',slG:'green'};for(var k in o){var e=document.getElementById(k);if(e)e.style.opacity=(s===o[k])?'1':'0.18';}var l=document.getElementById('sensorLight');if(l)l.title=t||'Fingerprint sensor: unknown';}"
+          "function p(){fetch('/sensor/status').then(function(r){return r.json();}).then(function(j){u(j.state,'Fingerprint sensor: '+j.text);}).catch(function(){u('','Fingerprint sensor: no answer from device');});}"
+          "setInterval(p,3000);})();</script>";
+  return html;
+}
 
 Match lastMatch;
 
@@ -571,6 +629,14 @@ String processor(const String &var)
   else if (var == "MQTT_STATS")
   {
     return String(mqttConnectCount) + " connects, " + mqttLostCount + " lost";
+  }
+  else if (var == "SENSOR_STATE")
+  {
+    return sensorStateText();
+  }
+  else if (var == "SENSOR_LIGHT")
+  {
+    return sensorLightHtml();
   }
   else if (var == "WIFI_LOST")
   {
@@ -1593,6 +1659,20 @@ void startWebserver()
 
   } // end normal operating mode
 
+  // fingerprint sensor status (traffic light) and manual reconnect
+  webServer.on("/sensor/status", HTTP_GET, [](AsyncWebServerRequest *request)
+               {
+    if (currentMode != Mode::wificonfig && !isAuthorized(request))
+      return;
+    request->send(200, "application/json", "{\"state\":\"" + sensorLightState() + "\",\"text\":\"" + sensorStateText() + "\"}"); });
+
+  webServer.on("/sensor/reconnect", HTTP_POST, [](AsyncWebServerRequest *request)
+               {
+    if (currentMode != Mode::wificonfig && !isAuthorized(request))
+      return;
+    sensorReconnectRequested = true;
+    request->send(200, "application/json", "{\"ok\":true}"); });
+
   // common url callbacks
   webServer.on("/reboot", HTTP_GET, [](AsyncWebServerRequest *request)
                {
@@ -1739,6 +1819,8 @@ void publishInfo()
   mqttClient.publish((t + "wifiLost").c_str(), String(wifiLostCount).c_str(), true);
   mqttClient.publish((t + "mqttLost").c_str(), String(mqttLostCount).c_str(), true);
   mqttClient.publish((t + "version").c_str(), VersionInfo, true);
+  mqttClient.publish((t + "sensor").c_str(), fingerManager.connected ? "online" : "offline", true);
+  mqttClient.publish((t + "sensorLost").c_str(), String(sensorLostCount).c_str(), true);
   lastInfoPublishMillis = millis();
 }
 
@@ -1992,6 +2074,12 @@ void publishHaDiscovery()
                            device, enabled);
   publishHaDiscoveryEntity("sensor", "failed_attempts", nodeId,
                            "\"name\":\"Failed attempts\",\"icon\":\"mdi:fingerprint-off\",\"state_class\":\"measurement\"" + diag + "," + jsonTopic("state_topic", info + "failedAttempts"),
+                           device, enabled);
+  publishHaDiscoveryEntity("binary_sensor", "sensor_connected", nodeId,
+                           "\"name\":\"Fingerprint sensor\",\"device_class\":\"connectivity\",\"payload_on\":\"online\",\"payload_off\":\"offline\"" + diag + "," + jsonTopic("state_topic", info + "sensor"),
+                           device, enabled);
+  publishHaDiscoveryEntity("sensor", "sensor_lost", nodeId,
+                           "\"name\":\"Fingerprint sensor losses\",\"icon\":\"mdi:fingerprint-off\",\"enabled_by_default\":false" + diag + "," + jsonTopic("state_topic", info + "sensorLost"),
                            device, enabled);
   publishHaDiscoveryEntity("sensor", "wifi_lost", nodeId,
                            "\"name\":\"WiFi connection losses\",\"icon\":\"mdi:wifi-off\",\"enabled_by_default\":false" + diag + "," + jsonTopic("state_topic", info + "wifiLost"),
@@ -2252,6 +2340,114 @@ void denyAccess(const Match &match, const String &reason)
   fingerManager.showAccessDenied();
 }
 
+// common handling after the sensor answers again (automatic or manual reconnect)
+void onSensorRestored(unsigned long now)
+{
+  sensorPingFails = 0;
+  sensorStateSinceMillis = now;
+  const AppSettings &settings = settingsManager.getAppSettings();
+  fingerManager.configTouchRingActive(settings.touchRingActiveColor, settings.touchRingActiveSequence, settings.scanColor, settings.matchColor);
+  updateLedSuppression();
+  fingerManager.setLedRingReady();
+  notifyClients("Fingerprint sensor connected.");
+  logEvent(EventType::sensorRestored);
+  updateClientsFingerlist(getFingerListHtml());
+  if (!checkPairingValid())
+    notifyClients("Security issue! Pairing with sensor is invalid. This could potentially be an attack! If the sensor is new or has been replaced by you do a (re)pairing in settings page. MQTT messages regarding matching fingerprints will not been sent until pairing is valid again.");
+  if (mqttClient.connected())
+    publishInfo();
+}
+
+// manual reconnect requested in the web UI: restart the sensor serial port and connect again
+void reconnectSensorNow()
+{
+  unsigned long now = millis();
+  bool wasConnected = fingerManager.connected;
+  sensorAutoRetryActive = false; // a manual attempt is a single try, no new automatic retry window
+  notifyClients("Manual sensor reconnect requested...");
+  sensorReconnecting = true;
+  fingerManager.markDisconnected();
+  fingerManager.restartSerial();
+  bool ok = fingerManager.connect(false);
+  sensorReconnecting = false;
+  lastSensorCheckMillis = millis();
+  if (ok)
+  {
+    onSensorRestored(now);
+    return;
+  }
+  sensorStateSinceMillis = now;
+  if (wasConnected)
+  {
+    sensorLostCount++;
+    logEvent(EventType::sensorLost, 0, 0, "manual reconnect failed");
+  }
+  notifyClients("Sensor reconnect failed, the sensor does not answer. Check the wiring.");
+  if (mqttClient.connected())
+    publishInfo();
+}
+
+// checks the fingerprint sensor while running: detects a lost sensor and reconnects when it comes back
+void superviseSensor()
+{
+  unsigned long now = millis();
+  if (sensorReconnectRequested)
+  {
+    sensorReconnectRequested = false;
+    reconnectSensorNow();
+    return;
+  }
+  if (fingerManager.connected)
+  {
+    if (now - lastSensorCheckMillis < SENSOR_CHECK_INTERVAL)
+      return;
+    lastSensorCheckMillis = now;
+    if (fingerManager.isFingerOnSensor())
+    {
+      sensorPingFails = 0; // finger on the sensor, it is obviously alive (and busy)
+      return;
+    }
+    if (fingerManager.ping())
+    {
+      sensorPingFails = 0;
+      return;
+    }
+    if (++sensorPingFails < SENSOR_MAX_FAILS)
+      return;
+    fingerManager.markDisconnected();
+    sensorStateSinceMillis = now;
+    sensorLostCount++;
+    sensorAutoRetryActive = true;
+    notifyClients("Fingerprint sensor does not answer anymore! Check the wiring. Reconnecting automatically for 3 minutes...");
+    logEvent(EventType::sensorLost);
+    if (mqttClient.connected())
+    {
+      mqttClient.publish((mqttTopic(TOPIC_INFO) + "/sensor").c_str(), "offline", true);
+      mqttClient.publish((mqttTopic(TOPIC_INFO) + "/sensorLost").c_str(), String(sensorLostCount).c_str(), true);
+    }
+  }
+  else
+  {
+    if (!sensorAutoRetryActive)
+      return; // gave up, only a manual reconnect helps
+    if (now - sensorStateSinceMillis >= SENSOR_RETRY_WINDOW)
+    {
+      sensorAutoRetryActive = false;
+      notifyClients("Fingerprint sensor still not found after 3 minutes, automatic retries stopped. Check the wiring and use \"Reconnect sensor\" on the System page.");
+      logEvent(EventType::sensorLost, 0, 0, "auto retry stopped");
+      return;
+    }
+    if (now - lastSensorCheckMillis < SENSOR_RETRY_INTERVAL)
+      return;
+    lastSensorCheckMillis = now;
+    sensorReconnecting = true;
+    bool ok = fingerManager.connect(true);
+    sensorReconnecting = false;
+    if (ok)
+      onSensorRestored(now);
+  }
+}
+
 void doScan()
 {
   Match match = fingerManager.scanFingerprint();
@@ -2412,8 +2608,12 @@ void setup()
   setupRadarPin();
 
   fingerManager.connect();
+  sensorStateSinceMillis = millis();
+  sensorAutoRetryActive = !fingerManager.connected;
+  if (!fingerManager.connected)
+    notifyClients("Fingerprint sensor not found at startup. Check the wiring (power, TX/RX). Reconnecting automatically for 3 minutes, after that use \"Reconnect sensor\" on the System page.");
 
-  if (!checkPairingValid())
+  if (fingerManager.connected && !checkPairingValid())
     notifyClients("Security issue! Pairing with sensor is invalid. This could potentially be an attack! If the sensor is new or has been replaced by you do a (re)pairing in settings page. MQTT messages regarding matching fingerprints will not been sent until pairing is valid again.");
 
   if (fingerManager.isFingerOnSensor() || !settingsManager.isWifiConfigured())
@@ -2576,6 +2776,7 @@ void loop()
   switch (currentMode)
   {
   case Mode::scan:
+    superviseSensor();
     if (fingerManager.connected)
       doScan();
     break;

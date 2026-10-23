@@ -18,7 +18,9 @@ enum class EventType : uint8_t
   deleted,
   backup,
   restore,
-  ringSuppressed
+  ringSuppressed,
+  sensorLost,
+  sensorRestored
 };
 
 // one persistent event, fixed size so the log can be stored as a simple ring buffer file

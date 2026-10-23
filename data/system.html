@@ -44,7 +44,7 @@
 	<nav class="navbar navbar-inverse">
 		<div class="container-fluid">
 		  <div class="navbar-header">
-			<a class="navbar-brand" href="/">%HOSTNAME%</a>
+			<a class="navbar-brand" href="/">%HOSTNAME% %SENSOR_LIGHT%</a>
 		  </div>
 		  <ul class="nav navbar-nav">
 			<li><a href="/">Fingerprints</a></li>
@@ -99,6 +99,19 @@
 		<label class="col-md-4 control-label">RSSI</label>
 		<div class="col-md-4">
 			<input type="text" class="form-control input-md" value="%RSSI%">
+		</div>
+	</div>
+	<div inert class="form-group">
+		<label class="col-md-4 control-label">Fingerprint sensor</label>
+		<div class="col-md-4">
+			<input type="text" class="form-control input-md" value="%SENSOR_STATE%">
+		</div>
+	</div>
+	<div class="form-group">
+		<label class="col-md-4 control-label">Sensor connection</label>
+		<div class="col-md-4">
+			<button type="button" id="btnSensorReconnect" class="btn btn-default" onclick="reconnectSensor()">Reconnect sensor</button>
+			<span id="sensorReconnectInfo"></span>
 		</div>
 	</div>
 	<div inert class="form-group">
@@ -205,5 +218,14 @@
 		</div>
 	</nav>
 
+	<script>
+		function reconnectSensor() {
+			var info = document.getElementById('sensorReconnectInfo');
+			info.textContent = ' reconnecting, this takes up to 10 seconds...';
+			fetch('/sensor/reconnect', {method: 'POST'}).then(function() {
+				setTimeout(function() { location.reload(); }, 12000);
+			}).catch(function() { info.textContent = ' request failed'; });
+		}
+	</script>
 </body>
 </html>
