@@ -135,7 +135,7 @@ unsigned long sensorLostCount = 0;
 uint8_t sensorPingFails = 0;
 bool sensorAutoRetryActive = false;    // automatic reconnecting within the retry window
 bool sensorReconnecting = false;       // manual or automatic reconnect in progress (yellow)
-bool sensorReconnectRequested = false; // set by the web UI, handled in the loop task
+volatile bool sensorReconnectRequested = false; // set by the web UI, handled in the loop task
 
 String htmlEscape(const String &text);
 
@@ -1664,7 +1664,7 @@ void startWebserver()
                {
     if (currentMode != Mode::wificonfig && !isAuthorized(request))
       return;
-    request->send(200, "application/json", "{\"state\":\"" + sensorLightState() + "\",\"text\":\"" + sensorStateText() + "\"}"); });
+    request->send(200, "application/json", "{\"state\":\"" + sensorLightState() + "\",\"text\":\"" + jsonEscape(sensorStateText()) + "\"}"); });
 
   webServer.on("/sensor/reconnect", HTTP_POST, [](AsyncWebServerRequest *request)
                {
