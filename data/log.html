@@ -11,9 +11,28 @@
 		background-color:#cecece;
 		color:rgb(0, 0, 0);
 	}
-	.form-horizontal{
-		margin-left: 15px;
-		margin-right: 15px;
+	.collapsible summary {
+		cursor: pointer;
+		font-weight: bold;
+		color: #337ab7;
+		margin: 10px 0;
+		list-style: none;
+	}
+	.collapsible summary::-webkit-details-marker {
+		display: none;
+	}
+	.collapsible summary::before {
+		content: "\25B8";
+		display: inline-block;
+		width: 1.2em;
+	}
+	.collapsible[open] summary::before {
+		content: "\25BE";
+	}
+	.info th {
+		width: 40ch;
+		font-weight: normal;
+		color: #777;
 	}
   </style>
 </head>
@@ -47,12 +66,39 @@
 			<li><a href="settings">Settings</a></li>
 			<li><a href="mqtt">MQTT</a></li>
 			<li class="active"><a href="#">Log</a></li>
-			<li><a href="system">System</a></li>
 		</ul>
 		</div>
 	</nav>
 
 	<div class="container-fluid">
+		<div id="sensorPanel" class="alert alert-%SENSOR_ALERT%" style="display: flex; align-items: center; flex-wrap: wrap">
+			<span id="sensorDot" style="display: inline-block; width: 24px; height: 24px; border-radius: 12px; margin-right: 12px; background: currentColor"></span>
+			<div style="flex: 1; min-width: 200px">
+				<div style="font-size: 18px; font-weight: bold">Fingerprint sensor</div>
+				<div id="sensorText">%SENSOR_STATE%</div>
+			</div>
+			<button type="button" class="btn btn-default btn-sm" onclick="reconnectSensor()">Reconnect sensor</button>
+		</div>
+		<script>
+			// keep the big sensor status up to date (same source as the traffic light in the navbar)
+			(function () {
+				var classes = { green: 'success', yellow: 'warning', red: 'danger' };
+				function poll() {
+					fetch('/sensor/status').then(function (r) { return r.json(); }).then(function (j) {
+						document.getElementById('sensorPanel').className = 'alert alert-' + (classes[j.state] || 'danger');
+						document.getElementById('sensorText').textContent = j.text;
+					}).catch(function () {
+						document.getElementById('sensorText').textContent = 'no answer from device';
+					});
+				}
+				setInterval(poll, 3000);
+			})();
+			function reconnectSensor() {
+				document.getElementById('sensorText').textContent = 'reconnecting, this takes up to 10 seconds...';
+				fetch('/sensor/reconnect', { method: 'POST' });
+			}
+		</script>
+
 		<h4>Events <small>last 30, kept after a restart</small></h4>
 		<div class="table-responsive">
 			<table class="table table-condensed table-striped">
@@ -73,6 +119,39 @@
 
 		<h4>System log <small>live, since the last restart</small></h4>
 		<div id="systemLog" class="well well-sm" style="max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 12px;">%LOGMESSAGES_FULL%</div>
+
+		<details class="collapsible">
+			<summary>Network</summary>
+			<table class="table table-condensed info">
+				<tr><th>IP address</th><td>%IP_ADDRESS%</td></tr>
+				<tr><th>MAC address</th><td>%MAC_ADDRESS%</td></tr>
+				<tr><th>Gateway</th><td>%GATEWAY%</td></tr>
+				<tr><th>DNS server</th><td>%DNS_SERVER%</td></tr>
+				<tr><th>WiFi SSID</th><td>%SSID%</td></tr>
+				<tr><th>WiFi BSSID</th><td>%BSSID%</td></tr>
+				<tr><th>WiFi channel</th><td>%WIFI_CHANNEL%</td></tr>
+				<tr><th>RSSI</th><td>%RSSI%</td></tr>
+				<tr><th>WiFi connection losses</th><td>%WIFI_LOST%</td></tr>
+				<tr><th>Last WiFi disconnect reason</th><td>%WIFI_REASON%</td></tr>
+				<tr><th>MQTT server</th><td>%MQTT_SERVER%</td></tr>
+				<tr><th>MQTT server IP</th><td>%MQTT_SERVER_IP%</td></tr>
+				<tr><th>MQTT state</th><td>%MQTT_STATE%</td></tr>
+				<tr><th>MQTT connections</th><td>%MQTT_STATS%</td></tr>
+			</table>
+		</details>
+
+		<details class="collapsible">
+			<summary>Device</summary>
+			<table class="table table-condensed info">
+				<tr><th>Fingerprint sensor</th><td>%SENSOR_STATE%</td></tr>
+				<tr><th>Chip</th><td>%CHIP%</td></tr>
+				<tr><th>CPU</th><td>%CPU%</td></tr>
+				<tr><th>Chip temp.</th><td>%CHIP_TEMP%</td></tr>
+				<tr><th>Flash size</th><td>%FLASH_SIZE%</td></tr>
+				<tr><th>Free heap</th><td>%FREE_HEAP%</td></tr>
+				<tr><th>Reset reason</th><td>%RESET_REASON%</td></tr>
+			</table>
+		</details>
 	</div>
 
 	<p></p>

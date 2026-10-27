@@ -57,10 +57,22 @@
 				}
 			}, false);
 
-			// event is fired when a new message from server was received
+			// the full log is on the log page; here the latest messages are only shown while an action is running
+			// (enrollment, delete, ...). The server sends the old messages right after connecting, skip those.
+			var firstMessage = true;
+			var hideTimer = null;
 			source.addEventListener('message', function(e) {
-				console.log("message", e.data);
-				document.getElementById('logMessages').innerHTML = e.data;
+				var show = !firstMessage;
+				if (firstMessage) {
+					firstMessage = false;
+					try { show = sessionStorage.getItem('showStatus') === '1'; sessionStorage.removeItem('showStatus'); } catch (err) {}
+				}
+				if (!show) return;
+				var box = document.getElementById('statusBox');
+				box.innerHTML = e.data;
+				box.style.display = '';
+				clearTimeout(hideTimer);
+				hideTimer = setTimeout(function() { box.style.display = 'none'; }, 30000);
 			}, false);
 
 			// event is fired when server side fingerlist was changed (e.g. enrollment of new finger)
@@ -70,6 +82,22 @@
 				fillAccessForm();
 			}, false);
 
+		}
+
+		// called by forms that redirect back to this page, so the status box shows the result
+		function rememberStatus()
+		{
+			try { sessionStorage.setItem('showStatus', '1'); } catch (err) {}
+			return true;
+		}
+
+		function reconnectSensor()
+		{
+			var info = document.getElementById('sensorReconnectInfo');
+			info.textContent = ' reconnecting, this takes up to 10 seconds...';
+			fetch('/sensor/reconnect', {method: 'POST'}).then(function() {
+				setTimeout(function() { location.reload(); }, 12000);
+			}).catch(function() { info.textContent = ' request failed'; });
 		}
 
 		function selectedFingerOption()
@@ -212,15 +240,13 @@
 			<li><a href="settings">Settings</a></li>
 			<li><a href="mqtt">MQTT</a></li>
 			<li><a href="log">Log</a></li>
-			<li><a href="system">System</a></li>
 		  </ul>
 		</div>
 	</nav>
 
-	<p></p>
-	<div class="alert alert-custom" id="logMessages" role="alert">%LOGMESSAGES%</div>
+	<div class="alert alert-custom" id="statusBox" role="alert" style="display: none"></div>
 
-	<form class="form-horizontal" action="/editFingerprints">
+	<form class="form-horizontal" action="/editFingerprints" onsubmit="return rememberStatus()">
 	<fieldset>
 
 	<!-- Form Name -->
@@ -308,7 +334,7 @@
 	</details>
 	</form>
 
-	<form class="form-horizontal" action="/enroll">
+	<form class="form-horizontal" action="/enroll" onsubmit="return rememberStatus()">
 	<fieldset>
 
 	<!-- Form Name -->
@@ -365,7 +391,7 @@
 		  <label><input type="checkbox" id="clearFirst"> Delete all fingerprints on the sensor first</label>
 		</div>
 		<button id="btnRestore" type="button" class="btn btn-warning" onclick="restoreBackup()">Restore backup</button><br>
-		<small class="text-muted">Also works with a new sensor. After replacing the sensor do a "Pairing a new sensor" in the settings.</small>
+		<small class="text-muted">Also works with a new sensor. After replacing the sensor use "Pair a new sensor" in the sensor section below.</small>
 	  </div>
 	</div>
 
@@ -377,6 +403,43 @@
 	</div>
 	</fieldset>
 	</div>
+
+	<form class="form-horizontal" onsubmit="return rememberStatus()">
+	<details class="collapsible">
+	<summary>Sensor</summary>
+
+	<div class="form-group">
+	  <label class="col-md-4 control-label">State</label>
+	  <div class="col-md-4">
+		<p class="form-control-static">%SENSOR_STATE%</p>
+	  </div>
+	</div>
+
+	<div class="form-group">
+	  <label class="col-md-4 control-label">Connection</label>
+	  <div class="col-md-8">
+		<button type="button" id="btnSensorReconnect" class="btn btn-default" onclick="reconnectSensor()">Reconnect sensor</button>
+		<span id="sensorReconnectInfo"></span>
+	  </div>
+	</div>
+
+	<div class="form-group">
+	  <label class="col-md-4 control-label">Pairing</label>
+	  <div class="col-md-4">
+		<button id="btnDoPairing" name="btnDoPairing" class="btn btn-warning" type="submit" formaction="pairing">Pair a new sensor</button><br>
+		<small class="text-muted">Needed after replacing the sensor. The sensor only accepts this device afterwards.</small>
+	  </div>
+	</div>
+
+	<div class="form-group">
+	  <label class="col-md-4 control-label">Delete</label>
+	  <div class="col-md-4">
+		<button id="btnDeleteAllFingerprints" name="btnDeleteAllFingerprints" class="btn btn-danger" type="submit"
+		  formaction="deleteAllFingerprints" onclick="return confirm('This will delete all fingerprints. Are you sure you wanna do that?')">Delete all fingerprints</button>
+	  </div>
+	</div>
+	</details>
+	</form>
 
 	<p></p>
 	<nav class="navbar navbar-default ">

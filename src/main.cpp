@@ -27,7 +27,7 @@ enum class Mode
   restore
 };
 
-const char *VersionInfo = "0.8.0";
+const char *VersionInfo = "0.9.0";
 
 // ===================================================================================================================
 // Caution: below are not the credentials for connecting to your home network, they are for the Access Point mode!!!
@@ -117,7 +117,7 @@ char msg[50];
 int value = 0;
 bool mqttConfigValid = true;
 
-// connection statistics for diagnosis (shown on system page)
+// connection statistics for diagnosis (shown on the log page)
 bool mqttWasConnected = false;
 bool wifiWasConnected = false;
 unsigned long mqttConnectCount = 0;
@@ -160,7 +160,7 @@ String sensorStateText()
   if (fingerManager.connected)
     return String("connected (since ") + since + ", " + sensorLostCount + " losses)";
   if (!sensorAutoRetryActive)
-    return String("NOT CONNECTED since ") + since + " (automatic retries stopped, use Reconnect sensor on the System page)";
+    return String("NOT CONNECTED since ") + since + " (automatic retries stopped, use Reconnect sensor on the Log page)";
   return String("NOT CONNECTED (since ") + since + ", " + sensorLostCount + " losses, retrying automatically)";
 }
 
@@ -633,6 +633,11 @@ String processor(const String &var)
   else if (var == "SENSOR_STATE")
   {
     return sensorStateText();
+  }
+  else if (var == "SENSOR_ALERT")
+  {
+    String st = sensorLightState();
+    return st == "green" ? "success" : (st == "yellow" ? "warning" : "danger");
   }
   else if (var == "SENSOR_LIGHT")
   {
@@ -1575,15 +1580,9 @@ void startWebserver()
             request->_tempFile.close();
         });
 
+    // the system page was merged into the log page, keep old bookmarks working
     webServer.on("/system", HTTP_GET, [](AsyncWebServerRequest *request)
-                 {
-      if (!settingsManager.getAppSettings().webPassword.isEmpty())
-      {
-        if(!request->authenticate(webServerUser, settingsManager.getAppSettings().webPassword.c_str()))
-          return request->requestAuthentication();
-      }
-      request->send(SPIFFS, "/system.html", String(), false, processor);
-      });
+                 { request->redirect("/log"); });
 
     webServer.on("/pairing", HTTP_GET, [](AsyncWebServerRequest *request)
                  {
@@ -2433,7 +2432,7 @@ void superviseSensor()
     if (now - sensorStateSinceMillis >= SENSOR_RETRY_WINDOW)
     {
       sensorAutoRetryActive = false;
-      notifyClients("Fingerprint sensor still not found after 3 minutes, automatic retries stopped. Check the wiring and use \"Reconnect sensor\" on the System page.");
+      notifyClients("Fingerprint sensor still not found after 3 minutes, automatic retries stopped. Check the wiring and use \"Reconnect sensor\" on the Log or Fingerprints page.");
       logEvent(EventType::sensorLost, 0, 0, "auto retry stopped");
       return;
     }
@@ -2611,7 +2610,7 @@ void setup()
   sensorStateSinceMillis = millis();
   sensorAutoRetryActive = !fingerManager.connected;
   if (!fingerManager.connected)
-    notifyClients("Fingerprint sensor not found at startup. Check the wiring (power, TX/RX). Reconnecting automatically for 3 minutes, after that use \"Reconnect sensor\" on the System page.");
+    notifyClients("Fingerprint sensor not found at startup. Check the wiring (power, TX/RX). Reconnecting automatically for 3 minutes, after that use \"Reconnect sensor\" on the Log or Fingerprints page.");
 
   if (fingerManager.connected && !checkPairingValid())
     notifyClients("Security issue! Pairing with sensor is invalid. This could potentially be an attack! If the sensor is new or has been replaced by you do a (re)pairing in settings page. MQTT messages regarding matching fingerprints will not been sent until pairing is valid again.");

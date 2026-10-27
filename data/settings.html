@@ -48,28 +48,6 @@
 </head>
 
 <body>
-	<script>
-		if (!!window.EventSource) {
-			var source = new EventSource('/events');
-
-			source.addEventListener('open', function (e) {
-				console.log("Events Connected");
-			}, false);
-
-			source.addEventListener('error', function (e) {
-				if (e.target.readyState != EventSource.OPEN) {
-					console.log("Events Disconnected");
-				}
-			}, false);
-
-			// event is fired when a new message from server was received
-			source.addEventListener('message', function (e) {
-				console.log("message", e.data);
-				document.getElementById('logMessages').innerHTML = event.data;
-			}, false);
-
-		}
-	</script>
 
 	<nav class="navbar navbar-inverse">
 		<div class="container-fluid">
@@ -81,12 +59,10 @@
 				<li class="active"><a href="#">Settings</a></li>
 				<li><a href="mqtt">MQTT</a></li>
 				<li><a href="log">Log</a></li>
-				<li><a href="system">System</a></li>
 			</ul>
 		</div>
 	</nav>
 
-	<div class="alert alert-custom" id="logMessages" role="alert">%LOGMESSAGES%</div>
 
 	<form class="form-horizontal" action="/settings" method="post">
 		<fieldset>
@@ -343,22 +319,24 @@
 		<fieldset>
 
 			<!-- Form Name -->
-			<legend>Advanced Actions</legend>
+			<legend>Maintenance</legend>
 
 			<div class="form-group">
-				<label class="col-md-4 control-label" for="btnFirmwareUpdate"></label>
+				<label class="col-md-4 control-label" for="btnFirmwareUpdate">Firmware update</label>
 				<div class="col-md-4">
 					<button id="btnFirmwareUpdate" name="btnFirmwareUpdate" class="btn btn-info" type="submit"
-						formaction="update">Firmware-Update </button>
-					<button id="btnDoPairing" name="btnDoPairing" class="btn btn-warning" type="submit"
-						formaction="pairing">Pairing a new sensor </button>
-					<button id="btnDeleteAllFingerprints" name="btnDeleteAllFingerprints" class="btn btn-danger"
-						type="submit" formaction="deleteAllFingerprints"
-						onclick="return confirm('This will delete all fingerprints. Are you sure you wanna do that?')">Delete
-						all Fingerprints</button>
+						formaction="update">Open update page</button><br>
+					<small class="text-muted">Upload firmware.bin (Firmware) and spiffs.bin (Filesystem) over the air.</small>
+				</div>
+			</div>
+
+			<div class="form-group">
+				<label class="col-md-4 control-label" for="btnFactoryReset">Factory reset</label>
+				<div class="col-md-4">
 					<button id="btnFactoryReset" name="btnFactoryReset" class="btn btn-danger" type="submit"
 						formaction="factoryReset"
-						onclick="return confirm('This will delete all fingerprints, your settings and your WiFi configuration. Are you sure you wanna do that?')">Factory-Reset</button>
+						onclick="return confirm('This will delete all fingerprints, your settings and your WiFi configuration. Are you sure you wanna do that?')">Factory reset</button><br>
+					<small class="text-muted">Deletes all fingerprints, settings and the WiFi configuration. The device restarts in WiFi setup mode afterwards.</small>
 				</div>
 			</div>
 

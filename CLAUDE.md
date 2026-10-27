@@ -30,7 +30,7 @@ pio run -t buildfs      # web UI (data/) -> spiffs.bin
 - `src/AccessControl.*`: lockout after failed attempts (millis based) and per-finger access schedules (NVS namespace `fingerAccess`).
 - `src/BackupManager.*`: backup/restore file format (`/backup.fpdb`, `/restore.fpdb` on SPIFFS).
 - `src/SettingsManager.*`: `WifiSettings`/`AppSettings` stored in NVS (`Preferences`). A new setting needs four places: the struct default, `load`, `save`, and the `/settings` handler plus a `processor()` placeholder.
-- `data/*.html`: pages served from SPIFFS (`index` fingerprints, `settings` general/LED/time, `mqtt` broker/topics/HA, `system` diagnostics, `wificonfig` AP mode). Each page posts to its own route and must only touch its own settings fields. `%PLACEHOLDER%` is replaced by `processor()`. They use the local `bootstrap.min.css`; do not add CDN links, because the device must work without internet.
+- `data/*.html`: pages served from SPIFFS (`index` fingerprints, sensor actions, backup; `settings` general/LED/security/radar, firmware update, factory reset; `mqtt` connection state, broker/topics/HA; `log` sensor status, events, system log, network/device info; `wificonfig` AP mode). There is no system page anymore, `/system` redirects to `/log`. Each page posts to its own route and must only touch its own settings fields. `%PLACEHOLDER%` is replaced by `processor()`. They use the local `bootstrap.min.css`; do not add CDN links, because the device must work without internet.
 
 ## Pitfalls (already caused bugs here)
 

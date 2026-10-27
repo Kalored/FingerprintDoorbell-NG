@@ -47,28 +47,6 @@
 </head>
 
 <body>
-	<script>
-		if (!!window.EventSource) {
-			var source = new EventSource('/events');
-
-			source.addEventListener('open', function (e) {
-				console.log("Events Connected");
-			}, false);
-
-			source.addEventListener('error', function (e) {
-				if (e.target.readyState != EventSource.OPEN) {
-					console.log("Events Disconnected");
-				}
-			}, false);
-
-			// event is fired when a new message from server was received
-			source.addEventListener('message', function (e) {
-				console.log("message", e.data);
-				document.getElementById('logMessages').innerHTML = event.data;
-			}, false);
-
-		}
-	</script>
 
 	<nav class="navbar navbar-inverse">
 		<div class="container-fluid">
@@ -80,12 +58,33 @@
 				<li><a href="settings">Settings</a></li>
 				<li class="active"><a href="#">MQTT</a></li>
 				<li><a href="log">Log</a></li>
-				<li><a href="system">System</a></li>
 			</ul>
 		</div>
 	</nav>
 
-	<div class="alert alert-custom" id="logMessages" role="alert">%LOGMESSAGES%</div>
+	<div class="form-horizontal">
+		<fieldset>
+			<legend>Connection</legend>
+			<div class="form-group">
+				<label class="col-md-4 control-label">State</label>
+				<div class="col-md-4">
+					<p class="form-control-static">%MQTT_STATE%</p>
+				</div>
+			</div>
+			<div class="form-group">
+				<label class="col-md-4 control-label">Server IP</label>
+				<div class="col-md-4">
+					<p class="form-control-static">%MQTT_SERVER_IP%</p>
+				</div>
+			</div>
+			<div class="form-group">
+				<label class="col-md-4 control-label">Connections</label>
+				<div class="col-md-4">
+					<p class="form-control-static">%MQTT_STATS%</p>
+				</div>
+			</div>
+		</fieldset>
+	</div>
 
 	<form class="form-horizontal" action="/mqtt" method="post">
 		<fieldset>

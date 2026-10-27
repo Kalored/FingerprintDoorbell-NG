@@ -63,6 +63,15 @@ Changes in 0.8.0:
 - **Traffic light** next to the device name in the top bar of every page: green = sensor ok, yellow = sensor does not answer / reconnecting, red = not connected (tooltip shows details, updates every 3s).
 - **"Reconnect sensor" button** on the System page: restarts the sensor serial port and connects again without rebooting the ESP32 (also available as `POST /sensor/reconnect`; status as JSON on `GET /sensor/status`).
 
+Changes in 0.9.0 (web UI cleanup):
+- menu is now Fingerprints / Settings / MQTT / Log, the System page is merged into the Log page (`/system` redirects to `/log`)
+- Log page: large fingerprint sensor status with "Reconnect sensor" button at the top, network and device info as collapsible sections at the bottom
+- the log panel at the top of the Fingerprints, Settings and MQTT pages is gone; on the Fingerprints page a status box only appears while an action runs (enrollment, rename, delete, ...)
+- Fingerprints page: new collapsible "Sensor" section with sensor state, reconnect, "Pair a new sensor" and "Delete all fingerprints" (moved from Settings)
+- Settings page: "Advanced Actions" renamed to "Maintenance" (firmware update, factory reset), one row with description per action
+- MQTT page: connection state, broker IP and connection counters at the top
+- Settings and MQTT pages no longer open a live event connection to the device
+
 WiFi problems with multi-AP systems (e.g. TP-Link Omada): the ESP32 only supports 2.4 GHz and WPA2. If it needs long to connect, try for its SSID: WPA2-PSK (AES) only instead of WPA2/WPA3, PMF (management frame protection) disabled, 802.11r / fast roaming disabled, band steering disabled. A separate 2.4 GHz IoT SSID with these settings works best.
 
 Wishlist / Todo:
