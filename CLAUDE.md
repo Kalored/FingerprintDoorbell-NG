@@ -5,7 +5,7 @@ ESP32 firmware (Arduino framework, PlatformIO) for a combined fingerprint reader
 ## Repository
 
 - `origin` = Kalored/FingerprintDoorbell-geronet1 (this fork), `upstream` = geronet1/FingerprintDoorbell. The original project is frickelzeugs/FingerprintDoorbell (unmaintained, many open issues worth checking).
-- Work happens on `main`. Changes are documented in the "Changes in x.y" list at the top of `README.md`. The list is chronological: add a new version at the end, after the newest entry (the user reordered it by hand once). Only the newest version is shown open (`### Changes in x.y (latest)`); when adding one, wrap the previous latest in `<details><summary>Changes in x.y</summary>` like the older ones.
+- Work happens on `main`. Changes are documented in the "Changes in x.y" list at the top of `README.md`. The list is chronological: add a new version at the end, after the newest entry (the user reordered it by hand once). The changelog is the last section of the README ("📝 Changelog"). Only the newest version is shown open (`### x.y · Headline (latest)`); when adding one, turn the previous latest into `<details><summary><b>x.y</b> · Headline</summary>` like the older ones, and update the "New in x.y" line in the note box at the top. Every version gets a short headline with its most important change.
 - Bump `VersionInfo` in `src/main.cpp` on releases. It is shown in the web UI and sent as `sw_version` in HA discovery.
 
 ## Build
