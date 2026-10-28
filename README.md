@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Kalored/FingerprintDoorbell-geronet1/releases/latest"><img src="https://img.shields.io/github/v/release/Kalored/FingerprintDoorbell-geronet1?style=flat-square&label=release" alt="Latest release"></a>
+  <a href="https://github.com/Kalored/FingerprintDoorbell-NG/releases/latest"><img src="https://img.shields.io/github/v/release/Kalored/FingerprintDoorbell-NG?style=flat-square&label=release" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/ESP32-Arduino-E7352C?style=flat-square&logo=espressif&logoColor=white" alt="ESP32">
   <img src="https://img.shields.io/badge/PlatformIO-build-F5822A?style=flat-square&logo=platformio&logoColor=white" alt="PlatformIO">
   <img src="https://img.shields.io/badge/Home%20Assistant-discovery-41BDF5?style=flat-square&logo=homeassistant&logoColor=white" alt="Home Assistant">
@@ -114,7 +114,7 @@ As an inspiration, a small shield board for the ESP32 mini with a JST socket, a 
 An HLK-LD2410 can be connected directly: VCC to 5V, GND to GND and OUT to a free GPIO (default 32, selectable in the settings). OUT uses 3.3V logic, no level shifter needed. Sensitivity and range are set with the HLKRadarTool app (Bluetooth versions LD2410B/C). Enable it under Settings, "Radar sensor".
 
 # 📥 Flashing the firmware
-Five files are needed. All of them are attached to the [latest release](https://github.com/Kalored/FingerprintDoorbell-geronet1/releases/latest):
+Five files are needed. All of them are attached to the [latest release](https://github.com/Kalored/FingerprintDoorbell-NG/releases/latest):
 
 | Offset | File | Contents |
 | --- | --- | --- |
@@ -126,7 +126,7 @@ Five files are needed. All of them are attached to the [latest release](https://
 
 ## Web flasher ⭐ recommended, no installation
 Needs Chrome or Edge on a desktop computer.
-1. Download `firmware.bin`, `spiffs.bin` and `bootloader.zip` from the [latest release](https://github.com/Kalored/FingerprintDoorbell-geronet1/releases/latest) and unpack `bootloader.zip`.
+1. Download `firmware.bin`, `spiffs.bin` and `bootloader.zip` from the [latest release](https://github.com/Kalored/FingerprintDoorbell-NG/releases/latest) and unpack `bootloader.zip`.
 2. Connect the ESP32 with a USB cable and open the [Espressif web flasher](https://espressif.github.io/esptool-js/).
 3. Click "Connect" and choose the serial port of the ESP32. If no port shows up, a USB driver (CP210x or CH340) may be missing; some boards need the BOOT button held while connecting.
 4. Optional for a clean first installation: "Erase Flash".
