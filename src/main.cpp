@@ -28,7 +28,7 @@ enum class Mode
   restore
 };
 
-const char *VersionInfo = "0.10.1";
+const char *VersionInfo = "0.11.0";
 
 // ===================================================================================================================
 // Caution: below are not the credentials for connecting to your home network, they are for the Access Point mode!!!
@@ -562,6 +562,10 @@ String processor(const String &var)
   else if (var == "VERSIONINFO")
   {
     return VersionInfo;
+  }
+  else if (var == "LANG")
+  {
+    return settingsManager.getAppSettings().language == "de" ? "de" : "en";
   }
   else if (var == "IP_ADDRESS")
   {
@@ -1815,6 +1819,28 @@ void startWebserver()
       response->addHeader("Content-Encoding", "gzip");
     response->addHeader("Cache-Control", "public, max-age=2592000");
     request->send(response); });
+
+  // translations of the web interface, cached by the browser (the pages load it with ?v=<version>)
+  webServer.on("/i18n.js", HTTP_GET, [](AsyncWebServerRequest *request)
+               {
+    if (!SPIFFS.exists("/i18n.js"))
+    {
+      request->send(200, "application/javascript", "window.t=function(s){return s;};"); // old file system: pages stay English
+      return;
+    }
+    AsyncWebServerResponse *response = request->beginResponse(SPIFFS, "/i18n.js", "application/javascript; charset=utf-8");
+    response->addHeader("Cache-Control", "public, max-age=2592000");
+    request->send(response); });
+
+  // language switch in the navbar, saved on the device so it applies to every browser
+  webServer.on("/language", HTTP_POST, [](AsyncWebServerRequest *request)
+               {
+    if (currentMode != Mode::wificonfig && !isAuthorized(request))
+      return;
+    AppSettings settings = settingsManager.getAppSettings();
+    settings.language = request->arg("lang") == "de" ? "de" : "en";
+    settingsManager.saveAppSettings(settings);
+    request->send(200, "application/json", "{\"ok\":true}"); });
 
   // OTA update handler, must be registered only once (a second unauthenticated registration would win over the authenticated one)
   if (currentMode == Mode::wificonfig || settingsManager.getAppSettings().webPassword.isEmpty())

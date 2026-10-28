@@ -6,6 +6,7 @@ ESP32 firmware (Arduino framework, PlatformIO) for a combined fingerprint reader
 
 - `origin` = Kalored/FingerprintDoorbell-NG (this fork), `upstream` = geronet1/FingerprintDoorbell. The original project is frickelzeugs/FingerprintDoorbell (unmaintained, many open issues worth checking).
 - Work happens on `main`. Changes are documented in the "Changes in x.y" list at the top of `README.md`. The list is chronological: add a new version at the end, after the newest entry (the user reordered it by hand once). The changelog is the last section of the README ("📝 Changelog"). Only the newest version is shown open (`### x.y · Headline (latest)`); when adding one, turn the previous latest into `<details><summary><b>x.y</b> · Headline</summary>` like the older ones, and update the "New in x.y" line in the note box at the top. Every version gets a short headline with its most important change.
+- Releases: build both images, copy them to `builds/vX.Y.Z/`, then the user runs `tools/release.sh X.Y.Z` (creating releases with `gh` is blocked for Claude). The script takes the release notes from the README changelog.
 - Bump `VersionInfo` in `src/main.cpp` on releases. It is shown in the web UI and sent as `sw_version` in HA discovery.
 
 ## Build
@@ -50,6 +51,7 @@ pio run -t buildfs      # web UI (data/) -> spiffs.bin
 - Never block the boot on WiFi or MQTT and never reboot because of a missing connection: `initWifi()` only starts the connection, the loop retries WiFi (`WiFi.begin()` every 20s) and connects MQTT once WiFi is up. `connectMqttClient()` returns immediately without WiFi.
 - WiFi modem sleep is disabled on purpose (`WiFi.setSleep(false)`), it made the web UI slow.
 - Settings forms use POST (`HTTP_GET | HTTP_POST` routes) so passwords do not end up in URLs.
+- **Translations (English/German)**: pages are written in English. `data/i18n.js` (loaded in every page head with `?v=%VERSIONINFO%`, cached) replaces visible texts in the browser when `<html lang="%LANG%">` is `de` (setting `language`, NVS key `lang`, switched with `POST /language`). Keys are the English texts with whitespace collapsed; texts with variable parts (also those created by the firmware: sensor state, events, lockout, MQTT state, backup messages, ...) go into `patterns`. **Every new or changed English text in a page or a firmware text shown in the UI needs a German entry there**, otherwise it stays English. Strings in page JavaScript (`confirm()`, `prompt()`) must be wrapped with `t()`. Log areas have class `notranslate` (system log, serial monitor and the enrollment status box stay English, the log messages also go to MQTT). Check for missing translations by running the page texts through `t()` with node.
 
 ## MQTT interface
 

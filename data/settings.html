@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="%LANG%">
 
 <head>
 	<!-- created with https://bootstrapformbuilder.com/ -->
@@ -7,6 +7,7 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1" charset="utf-8">
 	<link rel="icon" href="data:,">
 	<link rel="stylesheet" type="text/css" href="bootstrap.min.css">
+  <script src="i18n.js?v=%VERSIONINFO%"></script>
 	<style>
 		.alert-custom {
 			background-color: #cecece;
@@ -51,6 +52,7 @@
 
 	<nav class="navbar navbar-inverse">
 		<div class="container-fluid">
+			<span class="lang-switch"><a href="#" class="lang-en" onclick="return setLanguage('en')">EN</a> | <a href="#" class="lang-de" onclick="return setLanguage('de')">DE</a></span>
 			<div class="navbar-header">
 				<a class="navbar-brand" href="/">%HOSTNAME% %SENSOR_LIGHT%</a>
 			</div>
@@ -479,7 +481,7 @@
 				<div class="col-md-4">
 					<button id="btnFactoryReset" name="btnFactoryReset" class="btn btn-danger" type="submit"
 						formaction="factoryReset"
-						onclick="return confirm('This will delete all fingerprints, your settings and your WiFi configuration. Are you sure you wanna do that?')">Factory reset</button><br>
+						onclick="return confirm(t('This will delete all fingerprints, your settings and your WiFi configuration. Are you sure you wanna do that?'))">Factory reset</button><br>
 					<small class="text-muted">Deletes all fingerprints, settings and the WiFi configuration. The device restarts in WiFi setup mode afterwards.</small>
 				</div>
 			</div>

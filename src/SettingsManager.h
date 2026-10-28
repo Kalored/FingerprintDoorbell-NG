@@ -52,6 +52,7 @@ struct AppSettings
   int8_t radarPin = 32;
   bool radarActiveHigh = true;
   bool radarLedWake = false; // idle LED ring only on while somebody is detected
+  String language = "en";    // web interface language: "en" or "de" (translated in the browser by i18n.js)
   PinSet pins;               // GPIOs of the sensor UART, touch ring, doorbell and door opener (applied after a restart)
   String ntpServer = "pool.ntp.org";
   String timezone = "CET-1CEST,M3.5.0,M10.5.0/3"; // POSIX TZ string, this is what is applied

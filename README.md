@@ -44,7 +44,7 @@
 
 > [!NOTE]
 > Fork of [geronet1/FingerprintDoorbell](https://github.com/geronet1/FingerprintDoorbell), originally by [frickelzeugs](https://github.com/frickelzeugs/FingerprintDoorbell).
-> **New in 0.10.1:** serial monitor in the browser, see the [changelog](#-changelog).
+> **New in 0.11.0:** web interface in English and German, see the [changelog](#-changelog).
 
 ## 💡 How it works
 An ESP32 drives a Grow R503 fingerprint sensor next to your door:
@@ -76,8 +76,8 @@ Everything is set up in a web interface, no cloud and no internet connection nee
     <td width="50%">🚦 <b>Sensor supervision</b> with reconnect, no reboot needed</td>
   </tr>
   <tr>
-    <td width="50%">🔌 <b>Configurable GPIO pins</b></td>
-    <td width="50%">⬆️ <b>Updates over the air</b></td>
+    <td width="50%">🔌 <b>Configurable GPIO pins</b>, ⬆️ <b>updates over the air</b></td>
+    <td width="50%">🌐 Web interface in <b>English and German</b></td>
   </tr>
 </table>
 
@@ -165,7 +165,7 @@ Enter SSID, password and host name and save. The device restarts and connects to
 The device never goes back to configuration mode on its own, even if the WiFi is unavailable; it keeps trying to connect. To enter configuration mode again, keep your finger on the sensor while powering up the device.
 
 ## Web interface
-The menu has four pages. The traffic light next to the device name shows the state of the fingerprint sensor on every page (green ok, yellow does not answer / reconnecting, red not connected).
+The menu has four pages. The traffic light next to the device name shows the state of the fingerprint sensor on every page (green ok, yellow does not answer / reconnecting, red not connected). **EN | DE** on the right switches the language of the web interface between English and German.
 
 ### Fingerprints
 
@@ -367,5 +367,15 @@ Other changes:
 
 </details>
 
-### 0.10.1 · Serial monitor in the browser (latest)
+<details>
+<summary><b>0.10.1</b> · Serial monitor in the browser</summary>
+
 - **Serial monitor** on the Log page: everything the firmware writes to the serial port (last 8 KB, each line with the time since boot) can be read in the browser without a USB cable (`GET /serial/log`, protected by the web password like the other pages). Output of the boot loader before the firmware starts and ESP-IDF system messages are not included.
+
+</details>
+
+### 0.11.0 · Web interface in English and German (latest)
+- **Language switch** "EN | DE" on the right of the top bar of every page (and on the WiFi setup page). The language is saved on the device, so it applies to every browser.
+- Translated: all labels, buttons, help texts and confirmations, plus the texts created by the device (sensor state, event history, lockout, night mode and radar state, MQTT state, backup/restore messages, GPIO notes, weekdays of the access times).
+- Stays English: system log, serial monitor and enrollment status (they show the log messages, which are also published as `lastLogMessage`), MQTT topics and payloads, Home Assistant entity names.
+- The translations are in `data/i18n.js`, loaded once per firmware version and cached by the browser. Without the new file system image the web interface simply stays English.

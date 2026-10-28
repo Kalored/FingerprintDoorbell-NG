@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="%LANG%">
 
 <head>
 	<!-- created with https://bootstrapformbuilder.com/ -->
@@ -7,6 +7,7 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1" charset="utf-8">
 	<link rel="icon" href="data:,">
 	<link rel="stylesheet" type="text/css" href="bootstrap.min.css">
+  <script src="i18n.js?v=%VERSIONINFO%"></script>
 	<style>
 		.alert-custom {
 			background-color: #cecece;
@@ -50,6 +51,7 @@
 
 	<nav class="navbar navbar-inverse">
 		<div class="container-fluid">
+			<span class="lang-switch"><a href="#" class="lang-en" onclick="return setLanguage('en')">EN</a> | <a href="#" class="lang-de" onclick="return setLanguage('de')">DE</a></span>
 			<div class="navbar-header">
 				<a class="navbar-brand" href="/">%HOSTNAME% %SENSOR_LIGHT%</a>
 			</div>
@@ -160,7 +162,7 @@
 							Allow to start an enrollment over MQTT
 						</label>
 					</div>
-					<small class="text-muted">Send e.g. "5:Stephan" to "&lt;root topic&gt;/enroll" (in Home Assistant: text field
+					<small class="text-muted">Send e.g. "5:Alice" to "&lt;root topic&gt;/enroll" (in Home Assistant: text field
 						"Enroll finger"). Progress is published to "&lt;root topic&gt;/enrollState". Only enable this if your broker
 						is protected, everybody who can publish to it can add a finger.</small>
 				</div>

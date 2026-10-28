@@ -1,11 +1,12 @@
 <!DOCTYPE html>
-<html>
+<html lang="%LANG%">
 <head>
   <!-- created with https://bootstrapformbuilder.com/ -->
   <title>FingerprintDoorbell</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" charset="utf-8">
   <link rel="icon" href="data:,">
   <link rel="stylesheet" type="text/css" href="bootstrap.min.css">
+  <script src="i18n.js?v=%VERSIONINFO%"></script>
   <style>
 	.alert-custom{
 		background-color:#cecece;
@@ -58,6 +59,7 @@
 
 	<nav class="navbar navbar-inverse">
 		<div class="container-fluid">
+			<span class="lang-switch"><a href="#" class="lang-en" onclick="return setLanguage('en')">EN</a> | <a href="#" class="lang-de" onclick="return setLanguage('de')">DE</a></span>
 		  <div class="navbar-header">
 			<a class="navbar-brand" href="/">%HOSTNAME% %SENSOR_LIGHT%</a>
 		  </div>
@@ -110,7 +112,7 @@
 				</tbody>
 			</table>
 		</div>
-		<form action="/log/clear" method="post" onsubmit="return confirm('Delete the event history?')">
+		<form action="/log/clear" method="post" onsubmit="return confirm(t('Delete the event history?'))">
 			<button name="btnClearEvents" class="btn btn-default btn-sm">Clear events</button>
 		</form>
 
@@ -118,7 +120,7 @@
 		<p>%LOCKOUT_STATUS%</p>
 
 		<h4>System log <small>live, since the last restart</small></h4>
-		<div id="systemLog" class="well well-sm" style="max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 12px;">%LOGMESSAGES_FULL%</div>
+		<div id="systemLog" class="notranslate well well-sm" style="max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 12px;">%LOGMESSAGES_FULL%</div>
 
 		<details class="collapsible" id="serialBox">
 			<summary>Serial monitor</summary>
@@ -128,7 +130,7 @@
 				<button type="button" class="btn btn-default btn-sm" id="serialClear">Clear</button>
 				<button type="button" class="btn btn-default btn-sm" id="serialCopy">Copy</button>
 			</div>
-			<pre id="serialOut" style="max-height: 400px; overflow-y: auto; font-size: 12px; white-space: pre-wrap;"></pre>
+			<pre id="serialOut" class="notranslate" style="max-height: 400px; overflow-y: auto; font-size: 12px; white-space: pre-wrap;"></pre>
 			<script>
 				(function () {
 					var box = document.getElementById('serialBox');

@@ -1,11 +1,12 @@
 <!DOCTYPE html>
-<html>
+<html lang="%LANG%">
 <head>
   <!-- created with https://bootstrapformbuilder.com/ -->
   <title>FingerprintDoorbell</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" charset="utf-8">
   <link rel="icon" href="data:,">
   <link rel="stylesheet" type="text/css" href="bootstrap.min.css">
+  <script src="i18n.js?v=%VERSIONINFO%"></script>
   <style>
 	.alert-custom{
 		background-color:#cecece;
@@ -94,10 +95,10 @@
 		function reconnectSensor()
 		{
 			var info = document.getElementById('sensorReconnectInfo');
-			info.textContent = ' reconnecting, this takes up to 10 seconds...';
+			info.textContent = ' ' + t('reconnecting, this takes up to 10 seconds...');
 			fetch('/sensor/reconnect', {method: 'POST'}).then(function() {
 				setTimeout(function() { location.reload(); }, 12000);
-			}).catch(function() { info.textContent = ' request failed'; });
+			}).catch(function() { info.textContent = ' ' + t('request failed'); });
 		}
 
 		function selectedFingerOption()
@@ -114,7 +115,7 @@
 				return;
 			}
 			var strOldName = option.getAttribute('data-name') || '';
-			var newname = prompt('New Name?', strOldName);
+			var newname = prompt(t('New Name?'), strOldName);
 			if (newname === null)
 				document.getElementById('renameNewName').value = strOldName;
 			else
@@ -202,7 +203,7 @@
 				return;
 			}
 			var clearFirst = document.getElementById('clearFirst').checked;
-			if (!confirm('Restore the fingerprints from "' + fileInput.files[0].name + '"?' + (clearFirst ? '\nAll fingerprints currently stored on the sensor will be deleted first!' : '\nFingerprints with the same slot number will be overwritten.')))
+			if (!confirm(t('Restore the fingerprints from') + ' "' + fileInput.files[0].name + '"?\n' + t(clearFirst ? 'All fingerprints currently stored on the sensor will be deleted first!' : 'Fingerprints with the same slot number will be overwritten.')))
 				return;
 			var data = new FormData();
 			if (clearFirst) data.append('clearFirst', 'on');
@@ -232,6 +233,7 @@
 
 	<nav class="navbar navbar-inverse">
 		<div class="container-fluid">
+			<span class="lang-switch"><a href="#" class="lang-en" onclick="return setLanguage('en')">EN</a> | <a href="#" class="lang-de" onclick="return setLanguage('de')">DE</a></span>
 		  <div class="navbar-header">
 			<a class="navbar-brand" href="/">%HOSTNAME% %SENSOR_LIGHT%</a>
 		  </div>
@@ -244,7 +246,7 @@
 		</div>
 	</nav>
 
-	<div class="alert alert-custom" id="statusBox" role="alert" style="display: none"></div>
+	<div class="alert alert-custom notranslate" id="statusBox" role="alert" style="display: none"></div>
 
 	<form class="form-horizontal" action="/editFingerprints" onsubmit="return rememberStatus()">
 	<fieldset>
@@ -269,7 +271,7 @@
 	  <label class="col-md-4 control-label" for="btnRename"></label>
 	  <div class="col-md-8">
 		<button id="btnRename" name="btnRename" class="btn btn-info" onclick="askForNewName(event)">Rename</button>
-		<button id="btnDelete" name="btnDelete" class="btn btn-danger" onclick="return confirm('Delete the selected fingerprint?')">Delete</button>
+		<button id="btnDelete" name="btnDelete" class="btn btn-danger" onclick="return confirm(t('Delete the selected fingerprint?'))">Delete</button>
 	  </div>
 	</div>
 
@@ -473,7 +475,7 @@
 	  <label class="col-md-4 control-label">Delete</label>
 	  <div class="col-md-4">
 		<button id="btnDeleteAllFingerprints" name="btnDeleteAllFingerprints" class="btn btn-danger" type="submit"
-		  formaction="deleteAllFingerprints" onclick="return confirm('This will delete all fingerprints. Are you sure you wanna do that?')">Delete all fingerprints</button>
+		  formaction="deleteAllFingerprints" onclick="return confirm(t('This will delete all fingerprints. Are you sure you wanna do that?'))">Delete all fingerprints</button>
 	  </div>
 	</div>
 	</details>

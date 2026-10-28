@@ -1,10 +1,12 @@
 <!DOCTYPE html>
-<html>
+<html lang="%LANG%">
 <head>
   <title>WiFi Configuration</title>
+  <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="data:,">
   <link rel="stylesheet" type="text/css" href="bootstrap.min.css">
+  <script src="i18n.js?v=%VERSIONINFO%"></script>
   <style>
 	.form-horizontal{
 		margin-left: 15px;
@@ -16,7 +18,7 @@
   </style>
 </head>
 <body>
-	<h1>%HOSTNAME%</h1>
+	<h1>%HOSTNAME% <small><span class="lang-switch"><a href="#" class="lang-en" onclick="return setLanguage('en')">EN</a> | <a href="#" class="lang-de" onclick="return setLanguage('de')">DE</a></span></small></h1>
 	<div class="alert alert-danger" role="alert"><b>You are currently in WiFi configuration mode!</b></br></br>In this mode the device acts as a WiFi access point to which you can temporarily connect to with your smartphone/pc
 	for configuring the access to your regular WiFi network. <br><br>
 	After saving the new WiFi configuration the device will restart and try to connect to your network.	If this fails the device will not go back to WiFi config mode automatically. You have to put the device manually in WiFi config mode by press and hold the sensor surface for 10 s while powering up the device.
