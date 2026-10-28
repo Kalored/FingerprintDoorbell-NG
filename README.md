@@ -4,8 +4,13 @@ Fork from https://github.com/frickelzeugs/FingerprintDoorbell with some updates
 
 ~~OTA-Firmware upload with (Async) ElegantOTA not working because of library incompabilities~~ <- using ESPAsyncHTTPUpdateServer now
 
+## Changes
+
+<details>
+<summary>Changes before 0.6</summary>
+
 Changes from TheMaskedDeveloper:
-- color and sequenze configurable in web interface 
+- color and sequenze configurable in web interface
 - MQTT port configurable
 - color for scan/match configurable in web interface
 
@@ -18,7 +23,10 @@ Other changes:
 - Status web site with lots of info
 - OTA with ESPAsyncHTTPUpdateServer
 
-Changes in 0.6:
+</details>
+<details>
+<summary>Changes in 0.6</summary>
+
 - Home Assistant MQTT discovery (can be disabled in settings)
 - LED ring can be switched off over MQTT (`ledRing` on/off, e.g. at night), feedback while scanning is still shown
 - state of `ignoreTouchRing` and `ledRing` is published to `.../state` topics
@@ -35,7 +43,10 @@ Changes in 0.6:
 - separate "MQTT" page in the web UI, all MQTT topics configurable there (collapsed sections "Advanced options" / "Topic names"), plus port, client id, keepalive, on/off payloads (e.g. true/false for ioBroker), retain flag and log publishing
 - connection diagnostics: reason of MQTT/WiFi connection losses in the log, counters on the system page
 
-Changes in 0.7:
+</details>
+<details>
+<summary>Changes in 0.7</summary>
+
 - **Backup & restore** of all fingerprints (sensor templates, names, access times) as a file, also to a new sensor
 - **Access times per finger** (weekdays + time window, or disabled); outside the window "accessDenied" is published instead of a match
 - **Protection against trying out fingers**: lockout after a configurable number of failed attempts within a time window; configurable **ring cooldown**
@@ -45,25 +56,40 @@ Changes in 0.7:
 - **Enrollment over MQTT / Home Assistant** (optional, disabled by default)
 - many more values in Home Assistant: WiFi signal, uptime, IP, stored fingerprints, failed attempts, lockout, last event, ...
 
-Changes in 0.7.1:
+</details>
+<details>
+<summary>Changes in 0.7.1</summary>
+
 - faster web UI: stylesheet is stored gzip compressed and cached by the browser (19kB once instead of 121kB on every page), WiFi modem sleep disabled (it added 100-300ms latency per packet), no blocking DNS lookup on the system page
 - settings and MQTT settings are applied immediately, no reboot anymore
 
-Changes in 0.7.2:
+</details>
+<details>
+<summary>Changes in 0.7.2</summary>
+
 - fast boot: the device doesn't wait for WiFi anymore. Before, it rebooted after 30s without WiFi connection, which could end in a reboot loop of several minutes. Now the sensor, doorbell and web server start immediately, WiFi connects in the background (retried every 20s) and MQTT connects as soon as WiFi is up. The doorbell output also works without WiFi.
 - log shows the boot time and after how many seconds WiFi was connected
 - web server (incl. update page) is always started, even if the file system is damaged
 
-Changes in 0.7.3:
+</details>
+<details>
+<summary>Changes in 0.7.3</summary>
+
 - WiFi: scans and connects to the strongest access point of the configured network (helps with multiple APs / mesh), every second retry restarts the WiFi stack
 - WiFi disconnect reason (e.g. "15 4-way handshake timeout") in the log and on the system page
 
-Changes in 0.8.0:
+</details>
+<details>
+<summary>Changes in 0.8.0</summary>
+
 - **Fingerprint sensor supervision**: the sensor is checked every 10s. If it does not answer (cable/power problem) it is reported as lost in the log, event history, on the system page and over MQTT (`info/sensor` = online/offline, `info/sensorLost` = counter, Home Assistant entity "Fingerprint sensor"). While it is missing, the device keeps running and tries to reconnect every 15s for 3 minutes without a reboot (afterwards only the manual "Reconnect sensor" button on the System page reconnects it); after reconnecting the LED ring is restored and the sensor pairing is checked again.
 - **Traffic light** next to the device name in the top bar of every page: green = sensor ok, yellow = sensor does not answer / reconnecting, red = not connected (tooltip shows details, updates every 3s).
 - **"Reconnect sensor" button** on the System page: restarts the sensor serial port and connects again without rebooting the ESP32 (also available as `POST /sensor/reconnect`; status as JSON on `GET /sensor/status`).
 
-Changes in 0.9.0 (web UI cleanup):
+</details>
+<details>
+<summary>Changes in 0.9.0 (web UI cleanup)</summary>
+
 - menu is now Fingerprints / Settings / MQTT / Log, the System page is merged into the Log page (`/system` redirects to `/log`)
 - Log page: large fingerprint sensor status with "Reconnect sensor" button at the top, network and device info as collapsible sections at the bottom
 - the log panel at the top of the Fingerprints, Settings and MQTT pages is gone; on the Fingerprints page a status box only appears while an action runs (enrollment, rename, delete, ...)
@@ -72,17 +98,22 @@ Changes in 0.9.0 (web UI cleanup):
 - MQTT page: connection state, broker IP and connection counters at the top
 - Settings and MQTT pages no longer open a live event connection to the device
 
-Changes in 0.9.1 (diagnosis of the touch ring):
+</details>
+<details>
+<summary>Changes in 0.9.1 (diagnosis of the touch ring)</summary>
+
 - Settings page, "LED ring & night mode": live view of how the LED ring should look right now (color, breathing/blinking/steady/off, and the reason, e.g. night mode or lockout), the state of the touch ring wake-up pin (GPIO 5, "idle"/"touched") and two switches "LED ring on" and "Ignore touch ring" (also in the "Sensor" section of the Fingerprints page) that work without MQTT (`POST /sensor/ring`, state in `GET /sensor/status`)
 
-Changes in 0.10.0:
+</details>
+<details>
+<summary>Changes in 0.10.0</summary>
+
 - **GPIO pins configurable** (Settings, "GPIO pins"): sensor RX/TX, touch ring, doorbell output and door opener output. Only pins that really work for the function are offered (classic ESP32: no strapping pins, no flash pins, no USB serial pins, no input-only pins for outputs); a pin can only be used once, also not together with the radar pin. The pins are used after a restart; invalid stored pins fall back to the original wiring (RX 16, TX 17, touch 5, doorbell 19, door opener 23).
-  
-Changes in 0.10.1:
+
+</details>
+
+### Changes in 0.10.1 (latest)
 - **Serial monitor** on the Log page: everything the firmware writes to the serial port (last 8 KB, each line with the time since boot) can be read in the browser without a USB cable (`GET /serial/log`, protected by the web password like the other pages). Output of the boot loader before the firmware starts and ESP-IDF system messages are not included.
-
-
-
 
 ## What is FingerprintDoorbell?
 A doorbell that can read fingerprints, or a fingerprint reader that can work as a doorbell, depending on how you look at it. An ESP32 drives a Grow R503 fingerprint sensor:
