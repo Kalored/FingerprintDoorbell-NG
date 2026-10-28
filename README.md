@@ -134,7 +134,7 @@ As an inspiration, a small shield board for the ESP32 mini with a JST socket, a 
 An HLK-LD2410 can be connected directly: VCC to 5V, GND to GND and OUT to a free GPIO (default 32, selectable in the settings). OUT uses 3.3V logic, no level shifter needed. Sensitivity and range are set with the HLKRadarTool app (Bluetooth versions LD2410B/C). Enable it under Settings, "Radar sensor".
 
 # Flashing the firmware
-Two images are needed: `firmware.bin` (the program) and `spiffs.bin` (the web interface).
+Two images are needed: `firmware.bin` (the program) and `spiffs.bin` (the web interface). Ready-made files are attached to the [releases](https://github.com/Kalored/FingerprintDoorbell-geronet1/releases/latest), or build them yourself.
 
 ## Build with PlatformIO
 * Install [Visual Studio Code with the PlatformIO extension](https://platformio.org/platformio-ide) (or the PlatformIO command line tools).
@@ -143,7 +143,7 @@ Two images are needed: `firmware.bin` (the program) and `spiffs.bin` (the web in
 * First installation over USB: `pio run -t upload` and `pio run -t uploadfs` (Upload and Upload Filesystem Image).
 
 ## Flash binaries with esptool
-Install esptool with `pip install esptool`. You need the boot loader files from [doc/bootloader.zip](doc/bootloader.zip) (`bootloader_dio_40m.bin`, `boot_app0.bin`, `partitions.bin`) plus `firmware.bin` and `spiffs.bin`. Put all five files in one folder and run there:
+Install esptool with `pip install esptool`. You need the boot loader files from [doc/bootloader.zip](doc/bootloader.zip) (`bootloader_dio_40m.bin`, `boot_app0.bin`, `partitions.bin`) plus `firmware.bin` and `spiffs.bin` from the [latest release](https://github.com/Kalored/FingerprintDoorbell-geronet1/releases/latest). Put all five files in one folder and run there:
 
 ```
 esptool.py --chip esp32 --baud 460800 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0x1000 bootloader_dio_40m.bin 0x8000 partitions.bin 0xe000 boot_app0.bin 0x10000 firmware.bin 0x290000 spiffs.bin
