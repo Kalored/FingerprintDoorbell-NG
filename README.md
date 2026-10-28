@@ -92,8 +92,6 @@ A doorbell that can read fingerprints, or a fingerprint reader that can work as 
 
 Everything is set up in a web interface. No cloud and no internet connection are needed.
 
-<img src="doc/images/doorbell-sample.jpg" width="400">
-
 ## Features
 - up to 200 fingerprints with names, **access times per finger** (weekdays and time window, or disabled)
 - **backup and restore** of all fingerprints as a file, also onto a new sensor
