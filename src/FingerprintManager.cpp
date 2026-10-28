@@ -2,6 +2,7 @@
 #include "global.h"
 
 #include <Adafruit_Fingerprint.h>
+#include "SerialRedirect.h" // must stay the last include
 
 bool FingerprintManager::connect(bool quick)
 {
@@ -11,8 +12,8 @@ bool FingerprintManager::connect(bool quick)
 
   Serial.println("\n\nSearching for fingerprint sensor..");
 
-  // set the data rate for the sensor serial port
-  finger.begin(57600);
+  // open the sensor serial port on the configured pins
+  startSerial(!quick);
   delay(50);
   if (finger.verifyPassword())
   {
@@ -88,11 +89,25 @@ bool FingerprintManager::ping()
   return finger.verifyPassword();
 }
 
-void FingerprintManager::restartSerial()
+void FingerprintManager::setPins(int8_t rx, int8_t tx, int8_t touchRing)
+{
+  sensorRxPin = rx;
+  sensorTxPin = tx;
+  touchRingPin = touchRing;
+}
+
+// (re)opens the serial port to the sensor. The Adafruit library's begin() would always use the default pins of Serial2,
+// so the port is opened here, the library only uses the stream.
+void FingerprintManager::startSerial(bool waitForSensorBoot)
 {
   mySerial.end();
-  delay(100);
-  finger.begin(57600);
+  delay(waitForSensorBoot ? 1000 : 100); // the sensor needs a moment to boot after power-up
+  mySerial.begin(57600, SERIAL_8N1, sensorRxPin, sensorTxPin);
+}
+
+void FingerprintManager::restartSerial()
+{
+  startSerial(false);
   delay(50);
 }
 
@@ -663,6 +678,47 @@ void FingerprintManager::setLedRingReady()
     finger.LEDcontrol(touchRingActiveSequence, 250, touchRingActiveColor);
   else
     finger.LEDcontrol(FINGERPRINT_LED_ON, 0, FINGERPRINT_LED_BLUE); // just an indicator for me to see if touch ring is active or not
+}
+
+bool FingerprintManager::getRingPinTouched()
+{
+  return isRingTouched();
+}
+
+void FingerprintManager::getRingState(uint8_t &color, uint8_t &sequence, String &reason)
+{
+  color = 0;
+  sequence = FINGERPRINT_LED_OFF;
+  if (!connected)
+    reason = "sensor not connected";
+  else if (lastTouchState)
+  {
+    color = scanColor;
+    sequence = FINGERPRINT_LED_FLASHING;
+    reason = "ring touched, scanning";
+  }
+  else if (lockedOut)
+  {
+    color = FINGERPRINT_LED_RED;
+    sequence = FINGERPRINT_LED_BREATHING;
+    reason = "lockout after too many failed attempts";
+  }
+  else if (!ledRingEnabled)
+    reason = "LED ring switched off";
+  else if (ledRingSuppressed)
+    reason = "idle light off (night mode or nobody near the door)";
+  else if (!ignoreTouchRing)
+  {
+    color = touchRingActiveColor;
+    sequence = touchRingActiveSequence;
+    reason = "idle, waiting for a touch";
+  }
+  else
+  {
+    color = FINGERPRINT_LED_BLUE;
+    sequence = FINGERPRINT_LED_ON;
+    reason = "touch ring is ignored, scanning without ring signal";
+  }
 }
 
 bool FingerprintManager::deleteAll()

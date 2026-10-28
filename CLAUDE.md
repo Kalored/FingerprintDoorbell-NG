@@ -26,6 +26,7 @@ pio run -t buildfs      # web UI (data/) -> spiffs.bin
 
 - `src/main.cpp`: Wi-Fi/AP config mode, web server routes, the template `processor()`, MQTT (connect, callback, HA discovery), and the main `loop()` state machine (`Mode::scan/enroll/wificonfig/maintenance`).
 - `src/FingerprintManager.*`: all sensor communication (scan, enroll, LED ring, notepad-based sensor pairing). Finger names are stored in NVS namespace `fingerList`.
+- `src/SerialLog.*`, `src/SerialRedirect.h`: `Serial` in the firmware sources is replaced by `SerialLog` (a `Print` that writes to the real serial port and keeps the last 8 KB in a ring buffer for the serial monitor on the Log page). Every `.cpp` that prints to `Serial` includes `SerialRedirect.h` as its **last** include (never in headers).
 - `src/EventLog.*`: persistent event history (30 records, ring buffer file `/events.bin` on SPIFFS). Use `logEvent()` in main, it also publishes `lastEvent`.
 - `src/AccessControl.*`: lockout after failed attempts (millis based) and per-finger access schedules (NVS namespace `fingerAccess`).
 - `src/BackupManager.*`: backup/restore file format (`/backup.fpdb`, `/restore.fpdb` on SPIFFS).
@@ -59,7 +60,7 @@ Root topic, every sub topic and the on/off payloads are configurable in the web 
 - A finger name ending in `#` also pulses the door-opener GPIO on match.
 - HA discovery (setting `haDiscovery`) publishes retained configs to `homeassistant/<component>/fpdoorbell_<mac>/<object>/config`. Disabling it publishes empty retained payloads to remove them. The user runs both Home Assistant and ioBroker (ioBroker's MQTT adapter acts as the broker).
 
-GPIOs: sensor UART on Serial2, touch ring pin 5, doorbell output 19, door opener 23. Optional custom I/O is behind `CUSTOM_GPIOS`.
+GPIOs (configurable in Settings, "GPIO pins", used after a restart; defaults): sensor UART on Serial2 (RX 16, TX 17), touch ring pin 5, doorbell output 19, door opener 23. `src/GpioConfig.h` holds the per-function lists of usable pins for a classic ESP32 (no strapping/flash/USB-serial pins, no PWM-at-boot pins for outputs, no input-only pins for outputs) and `validate()` (allowed + no pin used twice, also not by the radar pin or the `CUSTOM_GPIOS` pins). The Adafruit library's `begin()` always opens Serial2 on its default pins, so `FingerprintManager::startSerial()` opens the port itself. Invalid stored pins fall back to the defaults at boot. Optional custom I/O is behind `CUSTOM_GPIOS`.
 
 ## Open topics
 

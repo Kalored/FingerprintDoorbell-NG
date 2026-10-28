@@ -118,8 +118,75 @@
 				})();
 			</script>
 
-			<details class="collapsible">
+			<details class="collapsible" id="ringDetails">
 				<summary>LED ring &amp; night mode</summary>
+
+			<style>
+				.ring-dot { display: inline-block; width: 22px; height: 22px; border-radius: 11px; vertical-align: middle; margin-right: 8px; background: #555; border: 2px solid #222; }
+				@keyframes ringBreath { from { opacity: 0.15; } to { opacity: 1; } }
+				@keyframes ringBlink { from { opacity: 1; } to { opacity: 0.1; } }
+			</style>
+			<div class="form-group">
+				<label class="col-md-4 control-label">Ring live view</label>
+				<div class="col-md-8">
+					<span id="ringDot" class="ring-dot"></span><b id="ringText">...</b><br>
+					<small class="text-muted" id="ringReason"></small>
+					<div style="margin-top: 8px">
+						<label class="checkbox-inline"><input type="checkbox" id="ringLedSwitch"> LED ring on</label>
+						<label class="checkbox-inline"><input type="checkbox" id="ringIgnoreSwitch"> Ignore touch ring</label>
+					</div>
+					<small class="text-muted">Touch ring pin (GPIO 5): <b id="ringPin">?</b>. Touch the ring: it should change to
+						"touched". If it never does, the wake-up wire or the touch power (3.3V touch) of the sensor is
+						not connected. "Ignore touch ring" scans without that signal and is reset by a restart. The
+						view shows how the ring should look, it does not read the real light of the sensor.</small>
+				</div>
+			</div>
+			<script>
+				(function () {
+					var colors = { 1: ['Red', '#e53935'], 2: ['Blue', '#1e88e5'], 3: ['Purple', '#8e24aa'], 4: ['Green', '#43a047'], 5: ['Yellow', '#fdd835'], 6: ['Cyan', '#00acc1'], 7: ['White', '#fafafa'] };
+					var seqs = { 1: 'breathing', 2: 'blinking', 3: 'steady' };
+					var lastClick = 0;
+					function send(key, on) {
+						var body = new URLSearchParams();
+						body.append(key, on ? '1' : '0');
+						lastClick = Date.now();
+						fetch('/sensor/ring', { method: 'POST', body: body });
+					}
+					document.getElementById('ringLedSwitch').addEventListener('change', function () { send('led', this.checked); });
+					document.getElementById('ringIgnoreSwitch').addEventListener('change', function () { send('ignore', this.checked); });
+					function show(j) {
+						var dot = document.getElementById('ringDot');
+						var c = colors[j.color];
+						if (!c || j.seq === 4) {
+							dot.style.background = '#555';
+							dot.style.animation = 'none';
+							dot.style.opacity = '1';
+							document.getElementById('ringText').textContent = 'Off';
+						} else {
+							dot.style.background = c[1];
+							dot.style.opacity = '1';
+							dot.style.animation = j.seq === 1 ? 'ringBreath 1.5s ease-in-out infinite alternate' : (j.seq === 2 ? 'ringBlink 0.4s linear infinite alternate' : 'none');
+							document.getElementById('ringText').textContent = c[0] + ', ' + (seqs[j.seq] || '');
+						}
+						document.getElementById('ringReason').textContent = j.reason;
+						document.getElementById('ringPin').textContent = j.pin ? 'touched' : 'idle (not touched)';
+						if (Date.now() - lastClick > 3000) {
+							document.getElementById('ringLedSwitch').checked = j.led;
+							document.getElementById('ringIgnoreSwitch').checked = j.ignore;
+						}
+					}
+					function poll() {
+						fetch('/sensor/status').then(function (r) { return r.json(); }).then(show).catch(function () { });
+					}
+					// only poll while the LED ring section is open
+					var details = document.getElementById('ringDetails');
+					var timer = null;
+					details.addEventListener('toggle', function () {
+						if (details.open) { poll(); timer = setInterval(poll, 1500); }
+						else clearInterval(timer);
+					});
+				})();
+			</script>
 
 			<div class="form-group">
 				<label for="touchRingActiveColor" class="col-md-4 control-label">Touch Ring Active: LED Color</label>
@@ -302,6 +369,83 @@
 						</div>
 					</div>
 				</div>
+			</details>
+
+			<details class="collapsible">
+				<summary>GPIO pins (advanced)</summary>
+
+				%GPIO_NOTE%
+				<div class="form-group">
+					<div class="col-md-8 col-md-offset-4">
+						<small class="text-muted">Only pins that work for the function are offered (classic ESP32, e.g. DevKit V1 with
+							ESP32-WROOM-32). Every pin can only be used once. The new pins are used after a restart. If the
+							sensor is not found afterwards, set the original pins again (RX 16, TX 17, touch 5, doorbell 19,
+							door opener 23).</small>
+					</div>
+				</div>
+				<div class="form-group">
+					<label class="col-md-4 control-label" for="gpio_rx">Sensor RX (ESP32 receives)</label>
+					<div class="col-md-4">
+						<select id="gpio_rx" name="gpio_rx" class="form-control gpio-select">%GPIO_RX_OPTIONS%</select>
+						<small class="text-muted">connected to TX of the sensor, default 16</small>
+					</div>
+				</div>
+				<div class="form-group">
+					<label class="col-md-4 control-label" for="gpio_tx">Sensor TX (ESP32 sends)</label>
+					<div class="col-md-4">
+						<select id="gpio_tx" name="gpio_tx" class="form-control gpio-select">%GPIO_TX_OPTIONS%</select>
+						<small class="text-muted">connected to RX of the sensor, default 17</small>
+					</div>
+				</div>
+				<div class="form-group">
+					<label class="col-md-4 control-label" for="gpio_touch">Touch ring (wake-up)</label>
+					<div class="col-md-4">
+						<select id="gpio_touch" name="gpio_touch" class="form-control gpio-select">%GPIO_TOUCH_OPTIONS%</select>
+						<small class="text-muted">wake-up signal of the sensor, default 5</small>
+					</div>
+				</div>
+				<div class="form-group">
+					<label class="col-md-4 control-label" for="gpio_bell">Doorbell output</label>
+					<div class="col-md-4">
+						<select id="gpio_bell" name="gpio_bell" class="form-control gpio-select">%GPIO_BELL_OPTIONS%</select>
+						<small class="text-muted">default 19</small>
+					</div>
+				</div>
+				<div class="form-group">
+					<label class="col-md-4 control-label" for="gpio_opener">Door opener output</label>
+					<div class="col-md-4">
+						<select id="gpio_opener" name="gpio_opener" class="form-control gpio-select">%GPIO_OPENER_OPTIONS%</select>
+						<small class="text-muted">default 23</small>
+					</div>
+				</div>
+				<div class="form-group">
+					<div class="col-md-8 col-md-offset-4">
+						<b id="gpioWarning" style="color: #c62828"></b>
+					</div>
+				</div>
+				<script>
+					(function () {
+						var selects = document.querySelectorAll('.gpio-select');
+						function check() {
+							var seen = {};
+							var duplicate = '';
+							for (var i = 0; i < selects.length; i++) {
+								var v = selects[i].value;
+								selects[i].style.borderColor = '';
+								if (seen[v] !== undefined) {
+									duplicate = 'GPIO ' + v + ' is selected twice.';
+									selects[i].style.borderColor = '#c62828';
+									selects[seen[v]].style.borderColor = '#c62828';
+								}
+								seen[v] = i;
+							}
+							document.getElementById('gpioWarning').textContent = duplicate;
+						}
+						for (var i = 0; i < selects.length; i++)
+							selects[i].addEventListener('change', check);
+						check();
+					})();
+				</script>
 			</details>
 
 			<!-- Button -->

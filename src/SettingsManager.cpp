@@ -57,6 +57,11 @@ bool SettingsManager::loadAppSettings()
         appSettings.radarPin = preferences.getChar("radarPin", 32);
         appSettings.radarActiveHigh = preferences.getBool("radarHigh", true);
         appSettings.radarLedWake = preferences.getBool("radarWake", false);
+        appSettings.pins.sensorRx = preferences.getChar("pinRx", 16);
+        appSettings.pins.sensorTx = preferences.getChar("pinTx", 17);
+        appSettings.pins.touchRing = preferences.getChar("pinTouch", 5);
+        appSettings.pins.doorbell = preferences.getChar("pinBell", 19);
+        appSettings.pins.doorOpener = preferences.getChar("pinOpener", 23);
         appSettings.ntpServer = preferences.getString("ntpServer", String("pool.ntp.org"));
         appSettings.timezone = preferences.getString("timezone", String("CET-1CEST,M3.5.0,M10.5.0/3"));
         appSettings.timezoneName = preferences.getString("tzName", String(""));
@@ -124,6 +129,11 @@ void SettingsManager::saveAppSettings()
     preferences.putChar("radarPin", appSettings.radarPin);
     preferences.putBool("radarHigh", appSettings.radarActiveHigh);
     preferences.putBool("radarWake", appSettings.radarLedWake);
+    preferences.putChar("pinRx", appSettings.pins.sensorRx);
+    preferences.putChar("pinTx", appSettings.pins.sensorTx);
+    preferences.putChar("pinTouch", appSettings.pins.touchRing);
+    preferences.putChar("pinBell", appSettings.pins.doorbell);
+    preferences.putChar("pinOpener", appSettings.pins.doorOpener);
     preferences.putString("ntpServer", appSettings.ntpServer);
     preferences.putString("timezone", appSettings.timezone);
     preferences.putString("tzName", appSettings.timezoneName);

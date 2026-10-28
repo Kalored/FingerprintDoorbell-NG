@@ -405,7 +405,7 @@
 	</div>
 
 	<form class="form-horizontal" onsubmit="return rememberStatus()">
-	<details class="collapsible">
+	<details class="collapsible" id="sensorDetails">
 	<summary>Sensor</summary>
 
 	<div class="form-group">
@@ -422,6 +422,44 @@
 		<span id="sensorReconnectInfo"></span>
 	  </div>
 	</div>
+
+	<div class="form-group">
+	  <label class="col-md-4 control-label">Touch ring</label>
+	  <div class="col-md-8">
+		<label class="checkbox-inline"><input type="checkbox" id="ringLedSwitch"> LED ring on</label>
+		<label class="checkbox-inline"><input type="checkbox" id="ringIgnoreSwitch"> Ignore touch ring</label><br>
+		<small class="text-muted">Touch ring pin (GPIO 5): <b id="ringPin">?</b>. "Ignore touch ring" scans without the ring signal and is reset by a restart. More details under Settings, LED ring.</small>
+	  </div>
+	</div>
+	<script>
+		(function () {
+			var lastClick = 0;
+			function send(key, on) {
+				var body = new URLSearchParams();
+				body.append(key, on ? '1' : '0');
+				lastClick = Date.now();
+				fetch('/sensor/ring', { method: 'POST', body: body });
+			}
+			document.getElementById('ringLedSwitch').addEventListener('change', function () { send('led', this.checked); });
+			document.getElementById('ringIgnoreSwitch').addEventListener('change', function () { send('ignore', this.checked); });
+			function poll() {
+				fetch('/sensor/status').then(function (r) { return r.json(); }).then(function (j) {
+					document.getElementById('ringPin').textContent = j.pin ? 'touched' : 'idle (not touched)';
+					if (Date.now() - lastClick > 3000) {
+						document.getElementById('ringLedSwitch').checked = j.led;
+						document.getElementById('ringIgnoreSwitch').checked = j.ignore;
+					}
+				}).catch(function () { });
+			}
+			// only poll while the sensor section is open
+			var details = document.getElementById('sensorDetails');
+			var timer = null;
+			details.addEventListener('toggle', function () {
+				if (details.open) { poll(); timer = setInterval(poll, 2000); }
+				else clearInterval(timer);
+			});
+		})();
+	</script>
 
 	<div class="form-group">
 	  <label class="col-md-4 control-label">Pairing</label>

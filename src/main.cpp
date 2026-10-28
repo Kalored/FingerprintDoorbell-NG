@@ -16,6 +16,7 @@
 #include "AccessControl.h"
 #include "BackupManager.h"
 #include "global.h"
+#include "SerialRedirect.h" // must stay the last include
 
 enum class Mode
 {
@@ -27,7 +28,7 @@ enum class Mode
   restore
 };
 
-const char *VersionInfo = "0.9.0";
+const char *VersionInfo = "0.10.1";
 
 // ===================================================================================================================
 // Caution: below are not the credentials for connecting to your home network, they are for the Access Point mode!!!
@@ -39,8 +40,11 @@ IPAddress WifiConfigIp(192, 168, 4, 1);                    // IP of access point
 const char *Selected = "selected"; // password used for WiFi when in Access Point mode for configuration. Min. 8 chars needed!
 const char *Checked = "checked";   // password used for WiFi when in Access Point mode for configuration. Min. 8 chars needed!
 
-const int doorbellOutputPin = 19;   // pin connected to the doorbell (when using hardware connection instead of mqtt to ring the bell)
-const int dooropenerOutputPin = 23; // pin connected to the door opener (when using hardware connection instead of mqtt to open the door)
+// GPIOs, configurable in the web UI (Settings, GPIO pins), applied at boot from the stored settings
+int doorbellOutputPin = 19;   // pin connected to the doorbell (when using hardware connection instead of mqtt to ring the bell)
+int dooropenerOutputPin = 23; // pin connected to the door opener (when using hardware connection instead of mqtt to open the door)
+PinSet activePins;            // pins in use since the last boot, differences to the settings need a restart
+String gpioMessage = "";      // result of the last attempt to save GPIO settings, shown on the settings page
 
 const int statusLed = LED_BUILTIN;
 
@@ -135,6 +139,8 @@ unsigned long sensorLostCount = 0;
 uint8_t sensorPingFails = 0;
 bool sensorAutoRetryActive = false;    // automatic reconnecting within the retry window
 bool sensorReconnecting = false;       // manual or automatic reconnect in progress (yellow)
+volatile int8_t ignoreRingRequest = -1; // from the web UI: 0/1 = set "ignore touch ring", -1 = nothing
+volatile int8_t ledRingRequest = -1;    // from the web UI: 0/1 = set LED ring on/off
 volatile bool sensorReconnectRequested = false; // set by the web UI, handled in the loop task
 
 String htmlEscape(const String &text);
@@ -203,6 +209,9 @@ String getWifiReasonString(uint8_t reason);
 String minutesToTimeString(uint16_t minutes);
 uint16_t timeStringToMinutes(const String &text, uint16_t defaultValue);
 bool isRadarPinAllowed(int pin);
+size_t getExtraUsedPins(const AppSettings &settings, int8_t *out, size_t maxCount);
+String getGpioOptionsHtml(PinRole role);
+String getGpioNoteHtml();
 String getRadarPinOptionsHtml();
 void updateLedSuppression();
 void setupRadarPin();
@@ -295,6 +304,29 @@ String jsonEscape(const String &text)
       escaped += '\\';
       escaped += c;
     }
+    else if ((uint8_t)c >= 0x20)
+      escaped += c;
+  }
+  return escaped;
+}
+
+// like jsonEscape(), but keeps line breaks (for the serial monitor)
+String jsonEscapeMultiline(const String &text)
+{
+  String escaped;
+  escaped.reserve(text.length() + 32);
+  for (unsigned int i = 0; i < text.length(); i++)
+  {
+    char c = text.charAt(i);
+    if (c == '"' || c == '\\')
+    {
+      escaped += '\\';
+      escaped += c;
+    }
+    else if (c == '\n')
+      escaped += "\\n";
+    else if (c == '\t')
+      escaped += ' ';
     else if ((uint8_t)c >= 0x20)
       escaped += c;
   }
@@ -819,6 +851,30 @@ String processor(const String &var)
   else if (var == "RADAR_PIN_OPTIONS")
   {
     return getRadarPinOptionsHtml();
+  }
+  else if (var == "GPIO_RX_OPTIONS")
+  {
+    return getGpioOptionsHtml(PinRole::sensorRx);
+  }
+  else if (var == "GPIO_TX_OPTIONS")
+  {
+    return getGpioOptionsHtml(PinRole::sensorTx);
+  }
+  else if (var == "GPIO_TOUCH_OPTIONS")
+  {
+    return getGpioOptionsHtml(PinRole::touchRing);
+  }
+  else if (var == "GPIO_BELL_OPTIONS")
+  {
+    return getGpioOptionsHtml(PinRole::doorbell);
+  }
+  else if (var == "GPIO_OPENER_OPTIONS")
+  {
+    return getGpioOptionsHtml(PinRole::doorOpener);
+  }
+  else if (var == "GPIO_NOTE")
+  {
+    return getGpioNoteHtml();
   }
   else if (var == "RADAR_HIGH_SELECTED")
   {
@@ -1365,6 +1421,28 @@ void startWebserver()
         settings.radarEnabled = request->hasArg("radar_enabled");
         if (isRadarPinAllowed(request->arg("radar_pin").toInt()))
           settings.radarPin = request->arg("radar_pin").toInt();
+        if (request->hasArg("gpio_rx")) // GPIO block, validated as a whole, pins are used after a restart
+        {
+          PinSet newPins = settings.pins;
+          newPins.sensorRx = request->arg("gpio_rx").toInt();
+          newPins.sensorTx = request->arg("gpio_tx").toInt();
+          newPins.touchRing = request->arg("gpio_touch").toInt();
+          newPins.doorbell = request->arg("gpio_bell").toInt();
+          newPins.doorOpener = request->arg("gpio_opener").toInt();
+          int8_t extraUsed[6];
+          size_t extraCount = getExtraUsedPins(settings, extraUsed, 6);
+          String error;
+          if (GpioConfig::validate(newPins, extraUsed, extraCount, error))
+          {
+            settings.pins = newPins;
+            gpioMessage = "";
+          }
+          else
+          {
+            gpioMessage = "GPIO settings not saved: " + error;
+            notifyClients(gpioMessage);
+          }
+        }
         settings.radarActiveHigh = request->arg("radar_level") != "low";
         settings.radarLedWake = request->hasArg("radar_led_wake");
         settings.touchRingActiveColor = request->arg("touchRingActiveColor").toInt();
@@ -1663,7 +1741,44 @@ void startWebserver()
                {
     if (currentMode != Mode::wificonfig && !isAuthorized(request))
       return;
-    request->send(200, "application/json", "{\"state\":\"" + sensorLightState() + "\",\"text\":\"" + jsonEscape(sensorStateText()) + "\"}"); });
+    uint8_t ringColor, ringSequence;
+    String ringReason;
+    fingerManager.getRingState(ringColor, ringSequence, ringReason);
+    String json = "{\"state\":\"" + sensorLightState() + "\",\"text\":\"" + jsonEscape(sensorStateText()) + "\"";
+    json += String(",\"pin\":") + (fingerManager.getRingPinTouched() ? "true" : "false");
+    json += String(",\"ignore\":") + (fingerManager.getIgnoreTouchRing() ? "true" : "false");
+    json += String(",\"led\":") + (fingerManager.getLedRingEnabled() ? "true" : "false");
+    json += String(",\"color\":") + ringColor + ",\"seq\":" + ringSequence + ",\"reason\":\"" + jsonEscape(ringReason) + "\"}";
+    request->send(200, "application/json", json); });
+
+  // serial monitor: text that was written to the serial port, polled by the Log page
+  webServer.on("/serial/log", HTTP_GET, [](AsyncWebServerRequest *request)
+               {
+    if (currentMode != Mode::wificonfig && !isAuthorized(request))
+      return;
+    uint32_t from = request->hasArg("from") ? strtoul(request->arg("from").c_str(), nullptr, 10) : 0;
+    uint32_t next = 0;
+    bool more = false;
+    String text = SerialLog.readFrom(from, next, 3000, more);
+    request->send(200, "application/json", "{\"next\":" + String(next) + ",\"more\":" + (more ? "true" : "false") + ",\"text\":\"" + jsonEscapeMultiline(text) + "\"}"); });
+
+  webServer.on("/serial/clear", HTTP_POST, [](AsyncWebServerRequest *request)
+               {
+    if (currentMode != Mode::wificonfig && !isAuthorized(request))
+      return;
+    SerialLog.clear();
+    request->send(200, "application/json", "{\"ok\":true}"); });
+
+  // switches for the touch ring diagnosis, applied by the loop task
+  webServer.on("/sensor/ring", HTTP_POST, [](AsyncWebServerRequest *request)
+               {
+    if (currentMode != Mode::wificonfig && !isAuthorized(request))
+      return;
+    if (request->hasArg("ignore"))
+      ignoreRingRequest = request->arg("ignore") == "1" ? 1 : 0;
+    if (request->hasArg("led"))
+      ledRingRequest = request->arg("led") == "1" ? 1 : 0;
+    request->send(200, "application/json", "{\"ok\":true}"); });
 
   webServer.on("/sensor/reconnect", HTTP_POST, [](AsyncWebServerRequest *request)
                {
@@ -1758,8 +1873,11 @@ uint16_t timeStringToMinutes(const String &text, uint16_t defaultValue)
 
 bool isRadarPinAllowed(int pin)
 {
+  const PinSet &used = settingsManager.getAppSettings().pins;
   for (int8_t candidate : radarPinCandidates)
   {
+    if (candidate == used.sensorRx || candidate == used.sensorTx || candidate == used.touchRing || candidate == used.doorbell || candidate == used.doorOpener)
+      continue;
 #ifdef CUSTOM_GPIOS
     if (candidate == customOutput2)
       continue;
@@ -1768,6 +1886,53 @@ bool isRadarPinAllowed(int pin)
       return true;
   }
   return false;
+}
+
+// pins of the fixed custom GPIOs and the radar sensor that must not be used twice
+size_t getExtraUsedPins(const AppSettings &settings, int8_t *out, size_t maxCount)
+{
+  size_t n = 0;
+  if (settings.radarEnabled && n < maxCount)
+    out[n++] = settings.radarPin;
+#ifdef CUSTOM_GPIOS
+  if (n + 4 <= maxCount)
+  {
+    out[n++] = customOutput1;
+    out[n++] = customOutput2;
+    out[n++] = customInput1;
+    out[n++] = customInput2;
+  }
+#endif
+  return n;
+}
+
+// <option> list with only the pins that work for this function
+String getGpioOptionsHtml(PinRole role)
+{
+  const AppSettings &settings = settingsManager.getAppSettings();
+  String html;
+  for (int pin = 0; pin <= 39; pin++)
+  {
+    if (!GpioConfig::isAllowed(role, pin))
+      continue;
+    String note;
+    if (role == PinRole::sensorRx && pin >= 34)
+      note = " (input only)";
+    else if (pin == 16 || pin == 17)
+      note = " (not on WROVER modules)";
+    html += String("<option value=\"") + pin + "\"" + (settings.pins.get(role) == pin ? " selected" : "") + ">GPIO " + pin + note + "</option>";
+  }
+  return html;
+}
+
+String getGpioNoteHtml()
+{
+  String html;
+  if (!gpioMessage.isEmpty())
+    html += "<div class=\"alert alert-danger\">" + htmlEscape(gpioMessage) + "</div>";
+  if (settingsManager.getAppSettings().pins != activePins)
+    html += "<div class=\"alert alert-warning\">The new pins are saved and are used after a restart. <a href=\"/reboot\">Restart now</a></div>";
+  return html;
 }
 
 String getRadarPinOptionsHtml()
@@ -2586,6 +2751,27 @@ void setup()
     ; // For Yun/Leo/Micro/Zero/...
   delay(100);
 
+  settingsManager.loadWifiSettings();
+  settingsManager.loadAppSettings();
+
+  // GPIOs from the settings; invalid or doubled pins (e.g. damaged settings) fall back to the original wiring
+  {
+    AppSettings pinSettings = settingsManager.getAppSettings();
+    int8_t extraUsed[6];
+    size_t extraCount = getExtraUsedPins(pinSettings, extraUsed, 6);
+    String pinError;
+    if (!GpioConfig::validate(pinSettings.pins, extraUsed, extraCount, pinError))
+    {
+      Serial.println("Invalid GPIO settings (" + pinError + "), using the default pins");
+      pinSettings.pins = PinSet();
+      settingsManager.saveAppSettings(pinSettings);
+    }
+  }
+  activePins = settingsManager.getAppSettings().pins;
+  doorbellOutputPin = activePins.doorbell;
+  dooropenerOutputPin = activePins.doorOpener;
+  fingerManager.setPins(activePins.sensorRx, activePins.sensorTx, activePins.touchRing);
+
   // initialize GPIOs
   pinMode(doorbellOutputPin, OUTPUT);
   digitalWrite(doorbellOutputPin, LOW);
@@ -2597,9 +2783,6 @@ void setup()
   pinMode(customInput1, INPUT_PULLDOWN);
   pinMode(customInput2, INPUT_PULLDOWN);
 #endif
-
-  settingsManager.loadWifiSettings();
-  settingsManager.loadAppSettings();
 
   const AppSettings &appSettings = settingsManager.getAppSettings();
   accessControl.configure(appSettings.failMax, appSettings.failWindow, appSettings.lockoutTime);
@@ -2742,6 +2925,22 @@ void loop()
     {
       applySettingsRequested = false;
       applySettings();
+    }
+
+    if (ignoreRingRequest >= 0 || ledRingRequest >= 0)
+    {
+      int8_t ignoreValue = ignoreRingRequest;
+      int8_t ledValue = ledRingRequest;
+      ignoreRingRequest = -1;
+      ledRingRequest = -1;
+      if (ignoreValue >= 0)
+        fingerManager.setIgnoreTouchRing(ignoreValue == 1);
+      if (ledValue >= 0)
+        fingerManager.setLedRingEnabled(ledValue == 1);
+      if (ignoreValue >= 0 && fingerManager.connected)
+        fingerManager.setLedRingReady(); // show the new state on the ring right away
+      if (mqttClient.connected())
+        publishSwitchStates();
     }
 
     if (applyMqttRequested)

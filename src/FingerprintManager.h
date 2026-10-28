@@ -14,7 +14,6 @@
   By using the touch ring as an additional input to the image sensor the sensitivity is much higher for door bell ring events. Unfortunately
   we cannot differ between touches on the ring by fingers or rain drops, so rain on the ring will cause false alarms.
 */
-const int touchRingPin = 5; // touch/wakeup pin connected to fingerprint sensor
 
 enum class ScanResult
 {
@@ -69,6 +68,12 @@ private:
   void writeRawPacket(uint8_t type, const uint8_t *payload, uint16_t length);
   int readRawPacket(uint8_t *payload, uint16_t maxLength, uint16_t &length, uint32_t timeoutMs);
 
+  // GPIOs, set with setPins() before connect(); defaults are the original wiring
+  int8_t touchRingPin = 5;  // touch/wakeup pin connected to fingerprint sensor
+  int8_t sensorRxPin = 16;  // ESP32 RX = TX of the sensor
+  int8_t sensorTxPin = 17;  // ESP32 TX = RX of the sensor
+  void startSerial(bool waitForSensorBoot);
+
   uint8_t touchRingActiveColor = 2;
   uint8_t touchRingActiveSequence = 1;
   uint8_t scanColor = 1;
@@ -76,6 +81,7 @@ private:
 
 public:
   bool connected;
+  void setPins(int8_t rx, int8_t tx, int8_t touchRing); // call before connect()
   bool connect(bool quick = false); // quick: only one attempt, no 5s wait (used for reconnecting while running)
   bool ping();                      // checks if the sensor answers (does not change "connected")
   void markDisconnected();
@@ -100,6 +106,9 @@ public:
   void setLedRingError();
   void setLedRingWifiConfig();
   void setLedRingReady();
+  bool getRingPinTouched(); // raw state of the touch ring wake-up pin (LOW = touched), for diagnosis
+  // how the LED ring should look right now (color 1-7, sequence 1 breathing / 2 blinking / 3 on / 4 off) and why
+  void getRingState(uint8_t &color, uint8_t &sequence, String &reason);
   String getPairingCode();
   bool setPairingCode(String pairingCode);
 

@@ -3,6 +3,7 @@
 
 #include <Preferences.h>
 #include "global.h"
+#include "GpioConfig.h"
 
 struct WifiSettings
 {
@@ -51,6 +52,7 @@ struct AppSettings
   int8_t radarPin = 32;
   bool radarActiveHigh = true;
   bool radarLedWake = false; // idle LED ring only on while somebody is detected
+  PinSet pins;               // GPIOs of the sensor UART, touch ring, doorbell and door opener (applied after a restart)
   String ntpServer = "pool.ntp.org";
   String timezone = "CET-1CEST,M3.5.0,M10.5.0/3"; // POSIX TZ string, this is what is applied
   String timezoneName = "Europe/Berlin";              // name selected in the web UI, empty = custom POSIX string

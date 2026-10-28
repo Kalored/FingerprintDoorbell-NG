@@ -1,6 +1,7 @@
 #include "EventLog.h"
 #include <SPIFFS.h>
 #include <time.h>
+#include "SerialRedirect.h" // must stay the last include
 
 static const char *EventLogFile = "/events.bin";
 static const uint8_t EventLogVersion = 1;

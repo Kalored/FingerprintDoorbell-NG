@@ -120,6 +120,50 @@
 		<h4>System log <small>live, since the last restart</small></h4>
 		<div id="systemLog" class="well well-sm" style="max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 12px;">%LOGMESSAGES_FULL%</div>
 
+		<details class="collapsible" id="serialBox">
+			<summary>Serial monitor</summary>
+			<p class="text-muted"><small>Everything the device writes to its serial port (last 8 KB since the last restart), with the time since boot in front of each line. Updates while this section is open. Output of the boot loader before the firmware starts is not included.</small></p>
+			<div style="margin-bottom: 6px">
+				<label class="checkbox-inline"><input type="checkbox" id="serialAuto" checked> Scroll to the end</label>
+				<button type="button" class="btn btn-default btn-sm" id="serialClear">Clear</button>
+				<button type="button" class="btn btn-default btn-sm" id="serialCopy">Copy</button>
+			</div>
+			<pre id="serialOut" style="max-height: 400px; overflow-y: auto; font-size: 12px; white-space: pre-wrap;"></pre>
+			<script>
+				(function () {
+					var box = document.getElementById('serialBox');
+					var out = document.getElementById('serialOut');
+					var auto = document.getElementById('serialAuto');
+					var next = 0, timer = null, busy = false;
+					function poll() {
+						if (busy || !box.open) return;
+						busy = true;
+						fetch('/serial/log?from=' + next).then(function (r) { return r.json(); }).then(function (j) {
+							if (j.text) {
+								out.textContent += j.text;
+								if (out.textContent.length > 60000) out.textContent = out.textContent.slice(-40000);
+								if (auto.checked) out.scrollTop = out.scrollHeight;
+							}
+							next = j.next;
+							busy = false;
+							if (j.more) setTimeout(poll, 100);
+						}).catch(function () { busy = false; });
+					}
+					box.addEventListener('toggle', function () {
+						if (box.open) { poll(); timer = setInterval(poll, 1000); }
+						else { clearInterval(timer); }
+					});
+					document.getElementById('serialClear').addEventListener('click', function () {
+						fetch('/serial/clear', { method: 'POST' }).then(function () { out.textContent = ''; });
+					});
+					document.getElementById('serialCopy').addEventListener('click', function () {
+						window.getSelection().selectAllChildren(out);
+						document.execCommand('copy');
+					});
+				})();
+			</script>
+		</details>
+
 		<details class="collapsible">
 			<summary>Network</summary>
 			<table class="table table-condensed info">
