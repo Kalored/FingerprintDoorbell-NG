@@ -135,22 +135,37 @@ As an inspiration, a small shield board for the ESP32 mini with a JST socket, a 
 An HLK-LD2410 can be connected directly: VCC to 5V, GND to GND and OUT to a free GPIO (default 32, selectable in the settings). OUT uses 3.3V logic, no level shifter needed. Sensitivity and range are set with the HLKRadarTool app (Bluetooth versions LD2410B/C). Enable it under Settings, "Radar sensor".
 
 # Flashing the firmware
-Two images are needed: `firmware.bin` (the program) and `spiffs.bin` (the web interface). Ready-made files are attached to the [releases](https://github.com/Kalored/FingerprintDoorbell-geronet1/releases/latest), or build them yourself.
+Five files are needed. All of them are attached to the [latest release](https://github.com/Kalored/FingerprintDoorbell-geronet1/releases/latest):
+
+| Offset | File | Contents |
+| --- | --- | --- |
+| `0x1000` | `bootloader_dio_40m.bin` | boot loader (in `bootloader.zip`) |
+| `0x8000` | `partitions.bin` | partition table (in `bootloader.zip`) |
+| `0xe000` | `boot_app0.bin` | (in `bootloader.zip`) |
+| `0x10000` | `firmware.bin` | the program |
+| `0x290000` | `spiffs.bin` | the web interface |
+
+## Web flasher (recommended, no installation)
+Needs Chrome or Edge on a desktop computer.
+1. Download `firmware.bin`, `spiffs.bin` and `bootloader.zip` from the [latest release](https://github.com/Kalored/FingerprintDoorbell-geronet1/releases/latest) and unpack `bootloader.zip`.
+2. Connect the ESP32 with a USB cable and open the [Espressif web flasher](https://espressif.github.io/esptool-js/).
+3. Click "Connect" and choose the serial port of the ESP32. If no port shows up, a USB driver (CP210x or CH340) may be missing; some boards need the BOOT button held while connecting.
+4. Optional for a clean first installation: "Erase Flash".
+5. Under "Program", add the five files with the offsets from the table above (enter the offset in hex, e.g. `0x290000`) and click "Program".
+6. When it is finished, press the reset button (EN) or unplug and plug in the ESP32.
+
+## Flash with esptool
+Install esptool with `pip install esptool`, put the five files in one folder and run there:
+
+```
+esptool.py --chip esp32 --baud 460800 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0x1000 bootloader_dio_40m.bin 0x8000 partitions.bin 0xe000 boot_app0.bin 0x10000 firmware.bin 0x290000 spiffs.bin
+```
 
 ## Build with PlatformIO
 * Install [Visual Studio Code with the PlatformIO extension](https://platformio.org/platformio-ide) (or the PlatformIO command line tools).
 * Clone this repository and open it.
 * Build: `pio run` creates `firmware.bin`, `pio run -t buildfs` creates `spiffs.bin` (in VS Code: Project Tasks, esp32doit-devkit-v1, General, Build and Platform, Build Filesystem Image).
 * First installation over USB: `pio run -t upload` and `pio run -t uploadfs` (Upload and Upload Filesystem Image).
-
-## Flash binaries with esptool
-Install esptool with `pip install esptool`. You need the boot loader files from [doc/bootloader.zip](doc/bootloader.zip) (`bootloader_dio_40m.bin`, `boot_app0.bin`, `partitions.bin`) plus `firmware.bin` and `spiffs.bin` from the [latest release](https://github.com/Kalored/FingerprintDoorbell-geronet1/releases/latest). Put all five files in one folder and run there:
-
-```
-esptool.py --chip esp32 --baud 460800 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0x1000 bootloader_dio_40m.bin 0x8000 partitions.bin 0xe000 boot_app0.bin 0x10000 firmware.bin 0x290000 spiffs.bin
-```
-
-The [web flasher of the upstream project](https://geronet1.github.io/FingerprintDoorbell-flasher/) also works for the first installation. It installs the older upstream version; update to this version afterwards over the air.
 
 After flashing, the LED ring breathes red: the device is in WiFi configuration mode.
 
