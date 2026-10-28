@@ -63,15 +63,6 @@ Changes in 0.8.0:
 - **Traffic light** next to the device name in the top bar of every page: green = sensor ok, yellow = sensor does not answer / reconnecting, red = not connected (tooltip shows details, updates every 3s).
 - **"Reconnect sensor" button** on the System page: restarts the sensor serial port and connects again without rebooting the ESP32 (also available as `POST /sensor/reconnect`; status as JSON on `GET /sensor/status`).
 
-Changes in 0.10.1:
-- **Serial monitor** on the Log page: everything the firmware writes to the serial port (last 8 KB, each line with the time since boot) can be read in the browser without a USB cable (`GET /serial/log`, protected by the web password like the other pages). Output of the boot loader before the firmware starts and ESP-IDF system messages are not included.
-
-Changes in 0.10.0:
-- **GPIO pins configurable** (Settings, "GPIO pins"): sensor RX/TX, touch ring, doorbell output and door opener output. Only pins that really work for the function are offered (classic ESP32: no strapping pins, no flash pins, no USB serial pins, no input-only pins for outputs); a pin can only be used once, also not together with the radar pin. The pins are used after a restart; invalid stored pins fall back to the original wiring (RX 16, TX 17, touch 5, doorbell 19, door opener 23).
-
-Changes in 0.9.1 (diagnosis of the touch ring):
-- Settings page, "LED ring & night mode": live view of how the LED ring should look right now (color, breathing/blinking/steady/off, and the reason, e.g. night mode or lockout), the state of the touch ring wake-up pin (GPIO 5, "idle"/"touched") and two switches "LED ring on" and "Ignore touch ring" (also in the "Sensor" section of the Fingerprints page) that work without MQTT (`POST /sensor/ring`, state in `GET /sensor/status`)
-
 Changes in 0.9.0 (web UI cleanup):
 - menu is now Fingerprints / Settings / MQTT / Log, the System page is merged into the Log page (`/system` redirects to `/log`)
 - Log page: large fingerprint sensor status with "Reconnect sensor" button at the top, network and device info as collapsible sections at the bottom
@@ -80,6 +71,18 @@ Changes in 0.9.0 (web UI cleanup):
 - Settings page: "Advanced Actions" renamed to "Maintenance" (firmware update, factory reset), one row with description per action
 - MQTT page: connection state, broker IP and connection counters at the top
 - Settings and MQTT pages no longer open a live event connection to the device
+
+Changes in 0.9.1 (diagnosis of the touch ring):
+- Settings page, "LED ring & night mode": live view of how the LED ring should look right now (color, breathing/blinking/steady/off, and the reason, e.g. night mode or lockout), the state of the touch ring wake-up pin (GPIO 5, "idle"/"touched") and two switches "LED ring on" and "Ignore touch ring" (also in the "Sensor" section of the Fingerprints page) that work without MQTT (`POST /sensor/ring`, state in `GET /sensor/status`)
+
+Changes in 0.10.0:
+- **GPIO pins configurable** (Settings, "GPIO pins"): sensor RX/TX, touch ring, doorbell output and door opener output. Only pins that really work for the function are offered (classic ESP32: no strapping pins, no flash pins, no USB serial pins, no input-only pins for outputs); a pin can only be used once, also not together with the radar pin. The pins are used after a restart; invalid stored pins fall back to the original wiring (RX 16, TX 17, touch 5, doorbell 19, door opener 23).
+  
+Changes in 0.10.1:
+- **Serial monitor** on the Log page: everything the firmware writes to the serial port (last 8 KB, each line with the time since boot) can be read in the browser without a USB cable (`GET /serial/log`, protected by the web password like the other pages). Output of the boot loader before the firmware starts and ESP-IDF system messages are not included.
+
+
+
 
 ## What is FingerprintDoorbell?
 A doorbell that can read fingerprints, or a fingerprint reader that can work as a doorbell, depending on how you look at it. An ESP32 drives a Grow R503 fingerprint sensor:
