@@ -1,4 +1,4 @@
-<h1 align="center">🔔 FingerprintDoorbell</h1>
+<h1 align="center">🔔 FingerprintDoorbell NG</h1>
 
 <p align="center">
   <b>Doorbell and fingerprint reader in one</b><br>
