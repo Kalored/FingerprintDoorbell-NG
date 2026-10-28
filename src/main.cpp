@@ -2517,7 +2517,7 @@ void onSensorRestored(unsigned long now)
   logEvent(EventType::sensorRestored);
   updateClientsFingerlist(getFingerListHtml());
   if (!checkPairingValid())
-    notifyClients("Security issue! Pairing with sensor is invalid. This could potentially be an attack! If the sensor is new or has been replaced by you do a (re)pairing in settings page. MQTT messages regarding matching fingerprints will not been sent until pairing is valid again.");
+    notifyClients("Security issue! Pairing with sensor is invalid. This could potentially be an attack! If the sensor is new or has been replaced by you use \"Pair a new sensor\" in the Sensor section of the Fingerprints page. MQTT messages regarding matching fingerprints will not been sent until pairing is valid again.");
   if (mqttClient.connected())
     publishInfo();
 }
@@ -2661,7 +2661,7 @@ void doScan()
       }
       else
       {
-        notifyClients("Security issue! Match was not sent by MQTT because of invalid sensor pairing! This could potentially be an attack! If the sensor is new or has been replaced by you do a (re)pairing in settings page.");
+        notifyClients("Security issue! Match was not sent by MQTT because of invalid sensor pairing! This could potentially be an attack! If the sensor is new or has been replaced by you use \"Pair a new sensor\" in the Sensor section of the Fingerprints page.");
         logEvent(EventType::accessDenied, match.matchId, match.matchConfidence, "invalid sensor pairing");
       }
     }
@@ -2796,7 +2796,7 @@ void setup()
     notifyClients("Fingerprint sensor not found at startup. Check the wiring (power, TX/RX). Reconnecting automatically for 3 minutes, after that use \"Reconnect sensor\" on the Log or Fingerprints page.");
 
   if (fingerManager.connected && !checkPairingValid())
-    notifyClients("Security issue! Pairing with sensor is invalid. This could potentially be an attack! If the sensor is new or has been replaced by you do a (re)pairing in settings page. MQTT messages regarding matching fingerprints will not been sent until pairing is valid again.");
+    notifyClients("Security issue! Pairing with sensor is invalid. This could potentially be an attack! If the sensor is new or has been replaced by you use \"Pair a new sensor\" in the Sensor section of the Fingerprints page. MQTT messages regarding matching fingerprints will not been sent until pairing is valid again.");
 
   if (fingerManager.isFingerOnSensor() || !settingsManager.isWifiConfigured())
   {
