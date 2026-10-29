@@ -53,6 +53,7 @@ struct AppSettings
   bool radarActiveHigh = true;
   bool radarLedWake = false; // idle LED ring only on while somebody is detected
   bool ignoreTouchRing = false; // scan without the touch ring signal (e.g. wake-up wire not connected), kept after a restart
+  bool ledRingEnabled = true;   // idle light of the LED ring (switch "LED ring", MQTT ledRing), kept after a restart
   String language = "en";    // web interface language: "en" or "de" (translated in the browser by i18n.js)
   PinSet pins;               // GPIOs of the sensor UART, touch ring, doorbell and door opener (applied after a restart)
   String ntpServer = "pool.ntp.org";

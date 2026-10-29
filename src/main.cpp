@@ -216,6 +216,7 @@ String getGpioNoteHtml();
 String getRadarPinOptionsHtml();
 void updateLedSuppression();
 void setIgnoreTouchRing(bool state);
+void setLedRingEnabled(bool state);
 void setupRadarPin();
 void applyTimeSettings();
 void initMqtt();
@@ -2072,7 +2073,7 @@ void publishFeatureStates()
 }
 
 // LED ring idle state depends on night mode and radar presence
-// "Ignore touch ring" (MQTT, Home Assistant, web UI) is saved, so it is still set after a restart,
+// "Ignore touch ring" and "LED ring" (MQTT, Home Assistant, web UI) are saved, so they are still set after a restart,
 // e.g. if the wake-up wire of the touch ring is not connected at all
 void setIgnoreTouchRing(bool state)
 {
@@ -2081,6 +2082,17 @@ void setIgnoreTouchRing(bool state)
   {
     AppSettings settings = settingsManager.getAppSettings();
     settings.ignoreTouchRing = state;
+    settingsManager.saveAppSettings(settings);
+  }
+}
+
+void setLedRingEnabled(bool state)
+{
+  fingerManager.setLedRingEnabled(state);
+  if (settingsManager.getAppSettings().ledRingEnabled != state)
+  {
+    AppSettings settings = settingsManager.getAppSettings();
+    settings.ledRingEnabled = state;
     settingsManager.saveAppSettings(settings);
   }
 }
@@ -2370,11 +2382,11 @@ void mqttCallback(char *topic, byte *message, unsigned int length)
   {
     if (isOnPayload(messageTemp))
     {
-      fingerManager.setLedRingEnabled(true);
+      setLedRingEnabled(true);
     }
     else if (isOffPayload(messageTemp))
     {
-      fingerManager.setLedRingEnabled(false);
+      setLedRingEnabled(false);
     }
     publishSwitchStates();
   }
@@ -2872,7 +2884,9 @@ void setup()
   accessControl.loadSchedules();
   setupRadarPin();
 
-  fingerManager.setIgnoreTouchRing(settingsManager.getAppSettings().ignoreTouchRing); // before connect(), so the ring shows the right idle light
+  // saved switches, before connect() so the ring shows the right idle light
+  fingerManager.setIgnoreTouchRing(settingsManager.getAppSettings().ignoreTouchRing);
+  fingerManager.setLedRingEnabled(settingsManager.getAppSettings().ledRingEnabled);
   fingerManager.connect();
   sensorStateSinceMillis = millis();
   sensorAutoRetryActive = !fingerManager.connected;
@@ -3020,7 +3034,7 @@ void loop()
       if (ignoreValue >= 0)
         setIgnoreTouchRing(ignoreValue == 1);
       if (ledValue >= 0)
-        fingerManager.setLedRingEnabled(ledValue == 1);
+        setLedRingEnabled(ledValue == 1);
       if (ignoreValue >= 0 && fingerManager.connected)
         fingerManager.setLedRingReady(); // show the new state on the ring right away
       if (mqttClient.connected())

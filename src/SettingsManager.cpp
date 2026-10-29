@@ -59,6 +59,7 @@ bool SettingsManager::loadAppSettings()
         appSettings.radarLedWake = preferences.getBool("radarWake", false);
         appSettings.language = preferences.getString("lang", String("en"));
         appSettings.ignoreTouchRing = preferences.getBool("ignoreRing", false);
+        appSettings.ledRingEnabled = preferences.getBool("ledRing", true);
         appSettings.pins.sensorRx = preferences.getChar("pinRx", 16);
         appSettings.pins.sensorTx = preferences.getChar("pinTx", 17);
         appSettings.pins.touchRing = preferences.getChar("pinTouch", 5);
@@ -133,6 +134,7 @@ void SettingsManager::saveAppSettings()
     preferences.putBool("radarWake", appSettings.radarLedWake);
     preferences.putString("lang", appSettings.language);
     preferences.putBool("ignoreRing", appSettings.ignoreTouchRing);
+    preferences.putBool("ledRing", appSettings.ledRingEnabled);
     preferences.putChar("pinRx", appSettings.pins.sensorRx);
     preferences.putChar("pinTx", appSettings.pins.sensorTx);
     preferences.putChar("pinTouch", appSettings.pins.touchRing);

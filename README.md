@@ -44,7 +44,7 @@
 
 > [!NOTE]
 > Fork of [geronet1/FingerprintDoorbell](https://github.com/geronet1/FingerprintDoorbell), originally by [frickelzeugs](https://github.com/frickelzeugs/FingerprintDoorbell).
-> **New in 0.13.1:** "Ignore touch ring" is kept after a restart. 0.13.0 brought the new web interface (cards, tabs, light and dark mode), see the [changelog](#-changelog).
+> **New in 0.13.1:** the switches "Ignore touch ring" and "LED ring" are kept after a restart. 0.13.0 brought the new web interface (cards, tabs, light and dark mode), see the [changelog](#-changelog).
 
 ## 💡 How it works
 An ESP32 drives a Grow R503 fingerprint sensor next to your door:
@@ -415,5 +415,6 @@ Other changes:
 
 </details>
 
-### 0.13.1 · "Ignore touch ring" is kept after a restart (latest)
+### 0.13.1 · Touch ring and LED ring switches are kept after a restart (latest)
 - **"Ignore touch ring"** is now saved on the device, no matter whether it is switched in the web interface, over MQTT or in Home Assistant. Before, every restart switched it off again. Without a connected wake-up wire of the touch ring the doorbell then waited for a touch signal that never came, so no finger was scanned until the switch was set again.
+- **"LED ring"** (idle light on/off, MQTT `ledRing`) is saved the same way. Night mode and the radar sensor still switch the idle light off on top of it, as before.
