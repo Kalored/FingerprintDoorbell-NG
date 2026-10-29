@@ -92,6 +92,7 @@
     'Upload failed.': 'Hochladen fehlgeschlagen.',
     'Creating backup...': 'Erstelle Sicherung...',
     'Restoring backup...': 'Stelle Sicherung wieder her...',
+    'Waiting for the sensor...': 'Warte auf den Sensor...',
     'Device is busy, try again later.': 'Das Gerät ist beschäftigt, bitte später erneut versuchen.',
     'Upload failed or file is empty.': 'Hochladen fehlgeschlagen oder Datei ist leer.',
     'Backup failed: could not read the template index from the sensor.': 'Sicherung fehlgeschlagen: Die Template-Liste konnte nicht vom Sensor gelesen werden.',
