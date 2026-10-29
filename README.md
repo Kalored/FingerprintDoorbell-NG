@@ -44,7 +44,7 @@
 
 > [!NOTE]
 > Fork of [geronet1/FingerprintDoorbell](https://github.com/geronet1/FingerprintDoorbell), originally by [frickelzeugs](https://github.com/frickelzeugs/FingerprintDoorbell).
-> **New in 0.12.0:** export and import of single fingerprints, see the [changelog](#-changelog).
+> **New in 0.13.0:** new web interface (cards, tabs, light and dark mode), see the [changelog](#-changelog).
 
 ## 💡 How it works
 An ESP32 drives a Grow R503 fingerprint sensor next to your door:
@@ -391,8 +391,20 @@ Other changes:
 
 </details>
 
-### 0.12.0 · Export and import of single fingerprints (latest)
+<details>
+<summary><b>0.12.0</b> · Export and import of single fingerprints</summary>
+
 - **Export** button in the fingerprint list: saves only the selected fingerprint (template, name and access times) as `finger-<slot>-<hostname>-<date>.fpdb`.
 - **Add to free slots** option when restoring: every fingerprint of the file goes to the next free slot, existing fingerprints are kept and never overwritten. The option is ticked automatically for files named `finger-...`. If the sensor has no free slot left, the restore stops with an error. This also works with full backups, e.g. to merge fingerprints of two devices.
 - Same file format as the full backup, so single files and full backups can be restored with the same form. Needs firmware and file system image (`spiffs.bin`).
 - While a backup, export or restore runs, its progress is only shown next to the buttons. The status box at the top of the page no longer pops up and pushes the page down.
+
+</details>
+
+### 0.13.0 · New web interface (latest)
+- **New look** for all pages: cards, one accent color, outline buttons, rounded fields. Works on phones, and in light and dark mode.
+- **Light / dark switch** next to the language switch in the top bar. Without a choice the browser setting is used; the choice is only remembered by the browser you use (nothing is saved on the device).
+- **Fingerprints page**: list and details side by side. The selected finger shows name, slot, Rename / Export / Delete and its access times right away (no separate "Access times" section). "Add / replace" is a slim bar at the top of the same card. Backup & restore are two compact boxes; the two restore check boxes became one selection (overwrite same slots / add to free slots / delete all first).
+- **Settings page** as tabs (General, LED ring & night mode, Security, Radar sensor, GPIO pins, Maintenance) with one Save button for all of them.
+- **Less text**: help texts moved into info icons ("i") that show the text on hover or tap.
+- The look is in the new file `data/style.css` (cached by the browser, the firmware serves it at `/style.css`). Needs firmware and file system image (`spiffs.bin`). Without the new file system the pages keep the old plain look.

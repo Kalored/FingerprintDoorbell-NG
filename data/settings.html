@@ -7,45 +7,8 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1" charset="utf-8">
 	<link rel="icon" href="data:,">
 	<link rel="stylesheet" type="text/css" href="bootstrap.min.css">
+	<link rel="stylesheet" type="text/css" href="style.css?v=%VERSIONINFO%">
   <script src="i18n.js?v=%VERSIONINFO%"></script>
-	<style>
-		.alert-custom {
-			background-color: #cecece;
-			color: rgb(0, 0, 0);
-		}
-
-		.form-horizontal {
-			margin-left: 15px;
-			margin-right: 15px;
-		}
-
-		.collapsible {
-			margin-bottom: 15px;
-		}
-
-		.collapsible summary {
-			cursor: pointer;
-			font-weight: bold;
-			color: #337ab7;
-			margin: 0 0 15px 0;
-			list-style: none;
-		}
-
-		.collapsible summary::-webkit-details-marker {
-			display: none;
-		}
-
-		.collapsible summary::before {
-			content: "\25B8";
-			display: inline-block;
-			width: 1.2em;
-		}
-
-		.collapsible[open] summary::before {
-			content: "\25BE";
-		}
-
-	</style>
 </head>
 
 <body>
@@ -66,29 +29,34 @@
 	</nav>
 
 
-	<form class="form-horizontal" action="/settings" method="post">
-		<fieldset>
+	<div class="form-horizontal">
+	<div class="tabbar" role="tablist">
+		<button type="button" class="tab" data-tab="general">General</button>
+		<button type="button" class="tab" data-tab="ring">LED ring &amp; night mode</button>
+		<button type="button" class="tab" data-tab="security">Security</button>
+		<button type="button" class="tab" data-tab="radar">Radar sensor</button>
+		<button type="button" class="tab" data-tab="gpio">GPIO pins</button>
+		<button type="button" class="tab" data-tab="maintenance">Maintenance</button>
+	</div>
 
-			<!-- Form Name -->
-			<legend>Settings</legend>
+	<form id="settingsForm" action="/settings" method="post">
+		<fieldset>
+		<div class="tab-panel" id="tab-general" data-tab="general">
 
 			<!-- Text input-->
 			<div class="form-group">
-				<label class="col-md-4 control-label" for="web_password">Web Password</label>
+				<label class="col-md-4 control-label" for="web_password">Web Password <span class="tip" tabindex="0" data-tip="User name is &quot;admin&quot;, leave empty if no authentication required">i</span></label>
 				<div class="col-md-4">
 					<input id="web_password" name="web_password" type="password" autocomplete="new-password"
 						placeholder="Password for website" class="form-control input-md" value="%WEB_PASSWORD%">
-						<small class="text-muted">User name is "admin", leave empty if no authentication required</small>
 					</div>
 			</div>
 
 			<div class="form-group">
-				<label class="col-md-4 control-label" for="ntpServer">NTP Server</label>
+				<label class="col-md-4 control-label" for="ntpServer">NTP Server <span class="tip" tabindex="0" data-tip="Used for timestamps in log panel. If you don't specify any, time will be always null.">i</span></label>
 				<div class="col-md-4">
 					<input id="ntpServer" name="ntpServer" type="text" placeholder="URL to NTP server"
 						class="form-control input-md" value="%NTP_SERVER%">
-					<small class="text-muted">Used for timestamps in log panel. If you don't specify any, time will be
-						always null.</small>
 				</div>
 			</div>
 
@@ -120,8 +88,9 @@
 				})();
 			</script>
 
-			<details class="collapsible" id="ringDetails">
-				<summary>LED ring &amp; night mode</summary>
+			</div>
+
+			<div class="tab-panel" id="tab-ring" data-tab="ring" hidden>
 
 			<style>
 				.ring-dot { display: inline-block; width: 22px; height: 22px; border-radius: 11px; vertical-align: middle; margin-right: 8px; background: #555; border: 2px solid #222; }
@@ -137,10 +106,8 @@
 						<label class="checkbox-inline"><input type="checkbox" id="ringLedSwitch"> LED ring on</label>
 						<label class="checkbox-inline"><input type="checkbox" id="ringIgnoreSwitch"> Ignore touch ring</label>
 					</div>
-					<small class="text-muted">Touch ring pin (GPIO 5): <b id="ringPin">?</b>. Touch the ring: it should change to
-						"touched". If it never does, the wake-up wire or the touch power (3.3V touch) of the sensor is
-						not connected. "Ignore touch ring" scans without that signal and is reset by a restart. The
-						view shows how the ring should look, it does not read the real light of the sensor.</small>
+					<small class="text-muted inline">Touch ring pin (GPIO 5): <b id="ringPin">?</b></small>
+					<span class="tip" tabindex="0" data-tip="Touch the ring: it should change to &quot;touched&quot;. If it never does, the wake-up wire or the touch power (3.3V touch) of the sensor is not connected. &quot;Ignore touch ring&quot; scans without that signal and is reset by a restart. The view shows how the ring should look, it does not read the real light of the sensor.">i</span>
 				</div>
 			</div>
 			<script>
@@ -180,18 +147,18 @@
 					function poll() {
 						fetch('/sensor/status').then(function (r) { return r.json(); }).then(show).catch(function () { });
 					}
-					// only poll while the LED ring section is open
-					var details = document.getElementById('ringDetails');
+					// only poll while the LED ring tab is shown
+					var panel = document.getElementById('tab-ring');
 					var timer = null;
-					details.addEventListener('toggle', function () {
-						if (details.open) { poll(); timer = setInterval(poll, 1500); }
-						else clearInterval(timer);
+					panel.addEventListener('tabchange', function (e) {
+						clearInterval(timer);
+						if (e.detail) { poll(); timer = setInterval(poll, 1500); }
 					});
 				})();
 			</script>
 
 			<div class="form-group">
-				<label for="touchRingActiveColor" class="col-md-4 control-label">Touch Ring Active: LED Color</label>
+				<label for="touchRingActiveColor" class="col-md-4 control-label">Touch Ring Active: LED Color <span class="tip" tabindex="0" data-tip="Not all versions of the R503 sensor supports all colors. Older ones only red, blue and purple!">i</span></label>
 				<div class="col-md-4">
 					<select id="touchRingActiveColor" name="touchRingActiveColor" class="select form-control">
 						<option value="1" %TOUCH_RING_ACTIVE_COLOR_1%>Red</option>
@@ -202,8 +169,6 @@
 						<option value="6" %TOUCH_RING_ACTIVE_COLOR_6%>Cyan</option>
 						<option value="7" %TOUCH_RING_ACTIVE_COLOR_7%>White</option>
 					</select>
-					<small class="text-muted">Not all versions of the R503 sensor supports all colors. Older ones only
-						red, blue and purple!</small>
 				</div>
 			</div>
 			<div class="form-group">
@@ -229,7 +194,7 @@
 				</div>
 			</div>
 			<div class="form-group">
-				<label for="scanColor" class="col-md-4 control-label">Scan fingerprint: LED Color</label>
+				<label for="scanColor" class="col-md-4 control-label">Scan fingerprint: LED Color <span class="tip" tabindex="0" data-tip="Not all versions of the R503 sensor supports all colors. Older ones only red, blue and purple!">i</span></label>
 				<div class="col-md-4">
 					<select id="scanColor" name="scanColor" class="select form-control">
 						<option value="1" %SCAN_COLOR_1%>Red</option>
@@ -240,12 +205,10 @@
 						<option value="6" %SCAN_COLOR_6%>Cyan</option>
 						<option value="7" %SCAN_COLOR_7%>White</option>
 					</select>
-					<small class="text-muted">Not all versions of the R503 sensor supports all colors. Older ones only
-						red, blue and purple!</small>
 				</div>
 			</div>
 			<div class="form-group">
-				<label for="matchColor" class="col-md-4 control-label">Matching fingerprint: LED Color</label>
+				<label for="matchColor" class="col-md-4 control-label">Matching fingerprint: LED Color <span class="tip" tabindex="0" data-tip="Not all versions of the R503 sensor supports all colors. Older ones only red, blue and purple!">i</span></label>
 				<div class="col-md-4">
 					<select id="matchColor" name="matchColor" class="select form-control">
 						<option value="1" %MATCH_COLOR_1%>Red</option>
@@ -256,8 +219,6 @@
 						<option value="6" %MATCH_COLOR_6%>Cyan</option>
 						<option value="7" %MATCH_COLOR_7%>White</option>
 					</select>
-					<small class="text-muted">Not all versions of the R503 sensor supports all colors. Older ones only
-						red, blue and purple!</small>
 				</div>
 			</div>
 
@@ -268,8 +229,8 @@
 							<label><input type="checkbox" id="night_enabled" name="night_enabled" value="on" %NIGHT_ENABLED%>
 								Switch the LED ring off at night</label>
 						</div>
-						<small class="text-muted">Currently: %NIGHT_STATUS%. Only the idle light is switched off, while scanning
-							the ring still shows its colors. Needs a working time (NTP).</small>
+						<small class="text-muted inline">Currently: %NIGHT_STATUS%</small>
+						<span class="tip" tabindex="0" data-tip="Only the idle light is switched off, while scanning the ring still shows its colors. Needs a working time (NTP).">i</span>
 					</div>
 				</div>
 
@@ -282,13 +243,12 @@
 						<input type="time" id="night_end" name="night_end" class="form-control" value="%NIGHT_END%">
 					</div>
 				</div>
-			</details>
+			</div>
 
-			<details class="collapsible">
-				<summary>Security</summary>
+			<div class="tab-panel" id="tab-security" data-tab="security" hidden>
 
 				<div class="form-group">
-					<label class="col-md-4 control-label" for="fail_max">Failed attempts</label>
+					<label class="col-md-4 control-label" for="fail_max">Failed attempts <span class="tip" tabindex="0" data-tip="After this number of unknown fingers within the time window all matches are ignored for the lockout time (protection against trying out fingers). 0 = disabled. Ringing still works during a lockout.">i</span></label>
 					<div class="col-md-2">
 						<input type="number" id="fail_max" name="fail_max" min="0" max="30" class="form-control"
 							value="%FAIL_MAX%">
@@ -302,9 +262,6 @@
 						</div>
 					</div>
 					<div class="col-md-4 col-md-offset-4">
-						<small class="text-muted">After this number of unknown fingers within the time window all matches are
-							ignored for the lockout time (protection against trying out fingers). 0 = disabled. Ringing still
-							works during a lockout.</small>
 					</div>
 				</div>
 
@@ -318,18 +275,15 @@
 				</div>
 
 				<div class="form-group">
-					<label class="col-md-4 control-label" for="ring_cooldown">Ring cooldown (s)</label>
+					<label class="col-md-4 control-label" for="ring_cooldown">Ring cooldown (s) <span class="tip" tabindex="0" data-tip="Minimum time between two ring events (protection against ringing again and again). 0 = disabled.">i</span></label>
 					<div class="col-md-4">
 						<input type="number" id="ring_cooldown" name="ring_cooldown" min="0" max="600" class="form-control"
 							value="%RING_COOLDOWN%">
-						<small class="text-muted">Minimum time between two ring events (protection against ringing again and
-							again). 0 = disabled.</small>
 					</div>
 				</div>
-			</details>
+			</div>
 
-			<details class="collapsible">
-				<summary>Radar sensor</summary>
+			<div class="tab-panel" id="tab-radar" data-tab="radar" hidden>
 
 				<div class="form-group">
 					<label class="col-md-4 control-label" for="radar_enabled">Radar sensor</label>
@@ -338,8 +292,8 @@
 							<label><input type="checkbox" id="radar_enabled" name="radar_enabled" value="on" %RADAR_ENABLED%>
 								Radar sensor connected</label>
 						</div>
-						<small class="text-muted">Currently: %RADAR_STATUS%. For a presence radar like the HLK-LD2410: VCC to 5V,
-							GND to GND, OUT to the GPIO below. Presence is published to MQTT ("presence") and Home Assistant.</small>
+						<small class="text-muted inline">Currently: %RADAR_STATUS%</small>
+						<span class="tip" tabindex="0" data-tip="For a presence radar like the HLK-LD2410: VCC to 5V, GND to GND, OUT to the GPIO below. Presence is published to MQTT (&quot;presence&quot;) and Home Assistant.">i</span>
 					</div>
 				</div>
 
@@ -371,53 +325,45 @@
 						</div>
 					</div>
 				</div>
-			</details>
+			</div>
 
-			<details class="collapsible">
-				<summary>GPIO pins (advanced)</summary>
+			<div class="tab-panel" id="tab-gpio" data-tab="gpio" hidden>
 
 				%GPIO_NOTE%
 				<div class="form-group">
 					<div class="col-md-8 col-md-offset-4">
-						<small class="text-muted">Only pins that work for the function are offered (classic ESP32, e.g. DevKit V1 with
-							ESP32-WROOM-32). Every pin can only be used once. The new pins are used after a restart. If the
-							sensor is not found afterwards, set the original pins again (RX 16, TX 17, touch 5, doorbell 19,
-							door opener 23).</small>
+						<small class="text-muted inline">New pins are used after a restart.</small>
+						<span class="tip" tabindex="0" data-tip="Only pins that work for the function are offered (classic ESP32, e.g. DevKit V1 with ESP32-WROOM-32). Every pin can only be used once. If the sensor is not found afterwards, set the original pins again (RX 16, TX 17, touch 5, doorbell 19, door opener 23).">i</span>
 					</div>
 				</div>
 				<div class="form-group">
-					<label class="col-md-4 control-label" for="gpio_rx">Sensor RX (ESP32 receives)</label>
+					<label class="col-md-4 control-label" for="gpio_rx">Sensor RX (ESP32 receives) <span class="tip" tabindex="0" data-tip="connected to TX of the sensor, default 16">i</span></label>
 					<div class="col-md-4">
 						<select id="gpio_rx" name="gpio_rx" class="form-control gpio-select">%GPIO_RX_OPTIONS%</select>
-						<small class="text-muted">connected to TX of the sensor, default 16</small>
 					</div>
 				</div>
 				<div class="form-group">
-					<label class="col-md-4 control-label" for="gpio_tx">Sensor TX (ESP32 sends)</label>
+					<label class="col-md-4 control-label" for="gpio_tx">Sensor TX (ESP32 sends) <span class="tip" tabindex="0" data-tip="connected to RX of the sensor, default 17">i</span></label>
 					<div class="col-md-4">
 						<select id="gpio_tx" name="gpio_tx" class="form-control gpio-select">%GPIO_TX_OPTIONS%</select>
-						<small class="text-muted">connected to RX of the sensor, default 17</small>
 					</div>
 				</div>
 				<div class="form-group">
-					<label class="col-md-4 control-label" for="gpio_touch">Touch ring (wake-up)</label>
+					<label class="col-md-4 control-label" for="gpio_touch">Touch ring (wake-up) <span class="tip" tabindex="0" data-tip="wake-up signal of the sensor, default 5">i</span></label>
 					<div class="col-md-4">
 						<select id="gpio_touch" name="gpio_touch" class="form-control gpio-select">%GPIO_TOUCH_OPTIONS%</select>
-						<small class="text-muted">wake-up signal of the sensor, default 5</small>
 					</div>
 				</div>
 				<div class="form-group">
-					<label class="col-md-4 control-label" for="gpio_bell">Doorbell output</label>
+					<label class="col-md-4 control-label" for="gpio_bell">Doorbell output <span class="tip" tabindex="0" data-tip="default 19">i</span></label>
 					<div class="col-md-4">
 						<select id="gpio_bell" name="gpio_bell" class="form-control gpio-select">%GPIO_BELL_OPTIONS%</select>
-						<small class="text-muted">default 19</small>
 					</div>
 				</div>
 				<div class="form-group">
-					<label class="col-md-4 control-label" for="gpio_opener">Door opener output</label>
+					<label class="col-md-4 control-label" for="gpio_opener">Door opener output <span class="tip" tabindex="0" data-tip="default 23">i</span></label>
 					<div class="col-md-4">
 						<select id="gpio_opener" name="gpio_opener" class="form-control gpio-select">%GPIO_OPENER_OPTIONS%</select>
-						<small class="text-muted">default 23</small>
 					</div>
 				</div>
 				<div class="form-group">
@@ -448,46 +394,67 @@
 						check();
 					})();
 				</script>
-			</details>
+			</div>
 
-			<!-- Button -->
-			<div class="form-group">
-				<label class="col-md-4 control-label" for="btnSaveSettings"></label>
-				<div class="col-md-4">
-					<button id="btnSaveSettings" name="btnSaveSettings" class="btn btn-success">Save</button>
-				</div>
+			<div class="savebar" id="savebar">
+				<button id="btnSaveSettings" name="btnSaveSettings" class="btn btn-primary">Save</button>
 			</div>
 
 		</fieldset>
 	</form>
 
-	<form class="form-horizontal">
+	<form class="tab-panel" id="tab-maintenance" data-tab="maintenance" hidden>
 		<fieldset>
 
-			<!-- Form Name -->
-			<legend>Maintenance</legend>
-
 			<div class="form-group">
-				<label class="col-md-4 control-label" for="btnFirmwareUpdate">Firmware update</label>
+				<label class="col-md-4 control-label" for="btnFirmwareUpdate">Firmware update <span class="tip" tabindex="0" data-tip="Upload firmware.bin (Firmware) and spiffs.bin (Filesystem) over the air.">i</span></label>
 				<div class="col-md-4">
-					<button id="btnFirmwareUpdate" name="btnFirmwareUpdate" class="btn btn-info" type="submit"
+					<button id="btnFirmwareUpdate" name="btnFirmwareUpdate" class="btn btn-default" type="submit"
 						formaction="update">Open update page</button><br>
-					<small class="text-muted">Upload firmware.bin (Firmware) and spiffs.bin (Filesystem) over the air.</small>
 				</div>
 			</div>
 
 			<div class="form-group">
-				<label class="col-md-4 control-label" for="btnFactoryReset">Factory reset</label>
+				<label class="col-md-4 control-label" for="btnFactoryReset">Factory reset <span class="tip" tabindex="0" data-tip="Deletes all fingerprints, settings and the WiFi configuration. The device restarts in WiFi setup mode afterwards.">i</span></label>
 				<div class="col-md-4">
 					<button id="btnFactoryReset" name="btnFactoryReset" class="btn btn-danger" type="submit"
 						formaction="factoryReset"
 						onclick="return confirm(t('This will delete all fingerprints, your settings and your WiFi configuration. Are you sure you wanna do that?'))">Factory reset</button><br>
-					<small class="text-muted">Deletes all fingerprints, settings and the WiFi configuration. The device restarts in WiFi setup mode afterwards.</small>
 				</div>
 			</div>
 
 		</fieldset>
 	</form>
+	</div>
+
+	<script>
+		// tabs: only one group of settings is shown at a time, one Save button saves all of them
+		(function () {
+			var tabs = document.querySelectorAll('.tabbar .tab');
+			var panels = document.querySelectorAll('.tab-panel');
+			function show(name) {
+				var found = false;
+				for (var i = 0; i < panels.length; i++) if (panels[i].getAttribute('data-tab') === name) found = true;
+				if (!found) name = 'general';
+				for (var i = 0; i < tabs.length; i++) tabs[i].classList.toggle('active', tabs[i].getAttribute('data-tab') === name);
+				for (var i = 0; i < panels.length; i++) {
+					var on = panels[i].getAttribute('data-tab') === name;
+					if (panels[i].hidden === on) {
+						panels[i].hidden = !on;
+						panels[i].dispatchEvent(new CustomEvent('tabchange', { detail: on }));
+					}
+				}
+				document.getElementById('savebar').hidden = name === 'maintenance';
+				try { sessionStorage.setItem('settingsTab', name); } catch (e) { }
+			}
+			for (var i = 0; i < tabs.length; i++)
+				tabs[i].addEventListener('click', function () { show(this.getAttribute('data-tab')); });
+			var start = 'general';
+			try { start = sessionStorage.getItem('settingsTab') || 'general'; } catch (e) { }
+			show(start);
+		})();
+	</script>
+
 
 
 	<p></p>

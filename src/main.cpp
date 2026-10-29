@@ -28,7 +28,7 @@ enum class Mode
   restore
 };
 
-const char *VersionInfo = "0.12.0";
+const char *VersionInfo = "0.13.0";
 
 // ===================================================================================================================
 // Caution: below are not the credentials for connecting to your home network, they are for the Access Point mode!!!
@@ -1848,6 +1848,18 @@ void startWebserver()
     AsyncWebServerResponse *response = request->beginResponse(SPIFFS, gzip ? "/bootstrap.min.css.gz" : "/bootstrap.min.css", "text/css");
     if (gzip)
       response->addHeader("Content-Encoding", "gzip");
+    response->addHeader("Cache-Control", "public, max-age=2592000");
+    request->send(response); });
+
+  // look of the web interface, cached by the browser (the pages load it with ?v=<version>)
+  webServer.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request)
+               {
+    if (!SPIFFS.exists("/style.css"))
+    {
+      request->send(200, "text/css", ""); // old file system: pages keep the plain Bootstrap look
+      return;
+    }
+    AsyncWebServerResponse *response = request->beginResponse(SPIFFS, "/style.css", "text/css; charset=utf-8");
     response->addHeader("Cache-Control", "public, max-age=2592000");
     request->send(response); });
 

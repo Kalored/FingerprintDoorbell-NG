@@ -6,36 +6,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" charset="utf-8">
   <link rel="icon" href="data:,">
   <link rel="stylesheet" type="text/css" href="bootstrap.min.css">
+  <link rel="stylesheet" type="text/css" href="style.css?v=%VERSIONINFO%">
   <script src="i18n.js?v=%VERSIONINFO%"></script>
-  <style>
-	.alert-custom{
-		background-color:#cecece;
-		color:rgb(0, 0, 0);
-	}
-	.collapsible summary {
-		cursor: pointer;
-		font-weight: bold;
-		color: #337ab7;
-		margin: 10px 0;
-		list-style: none;
-	}
-	.collapsible summary::-webkit-details-marker {
-		display: none;
-	}
-	.collapsible summary::before {
-		content: "\25B8";
-		display: inline-block;
-		width: 1.2em;
-	}
-	.collapsible[open] summary::before {
-		content: "\25BE";
-	}
-	.info th {
-		width: 40ch;
-		font-weight: normal;
-		color: #777;
-	}
-  </style>
 </head>
 <body>
 	<script>
@@ -101,6 +73,7 @@
 			}
 		</script>
 
+		<section class="card">
 		<h4>Events <small>last 30, kept after a restart</small></h4>
 		<div class="table-responsive">
 			<table class="table table-condensed table-striped">
@@ -115,12 +88,17 @@
 		<form action="/log/clear" method="post" onsubmit="return confirm(t('Delete the event history?'))">
 			<button name="btnClearEvents" class="btn btn-default btn-sm">Clear events</button>
 		</form>
+		</section>
 
+		<section class="card">
 		<h4>Security</h4>
 		<p>%LOCKOUT_STATUS%</p>
+		</section>
 
+		<section class="card">
 		<h4>System log <small>live, since the last restart</small></h4>
 		<div id="systemLog" class="notranslate well well-sm" style="max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 12px;">%LOGMESSAGES_FULL%</div>
+		</section>
 
 		<details class="collapsible" id="serialBox">
 			<summary>Serial monitor</summary>

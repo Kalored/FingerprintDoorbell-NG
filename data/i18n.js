@@ -53,6 +53,24 @@
     'Restore': 'Wiederherstellen',
     'Delete all fingerprints on the sensor first': 'Vorher alle Fingerabdrücke auf dem Sensor löschen',
     'Restore backup': 'Sicherung wiederherstellen',
+    'Switch between light and dark': 'Zwischen hell und dunkel wechseln',
+    'Add / replace': 'Hinzufügen / ersetzen',
+    'Slot 1-200': 'Platz 1-200',
+    'Memory slot': 'Speicherplatz',
+    'Just for human readability you can additionally assign an name to your slot number. The name will also been published by MQTT. If the name ends with a \'#\' the door opener output pin is activated, too.': 'Zur besseren Lesbarkeit kannst du dem Speicherplatz zusätzlich einen Namen geben. Der Name wird ebenfalls per MQTT gesendet. Endet der Name mit \'#\', wird zusätzlich der Ausgang für den Türöffner geschaltet.',
+    'Also works with a new sensor. After replacing the sensor use "Pair a new sensor" in the sensor section below. A single fingerprint exported with "Export" is restored the same way and goes to the next free slot.': 'Funktioniert auch mit einem neuen Sensor. Nach einem Sensortausch unten im Bereich Sensor "Neuen Sensor koppeln" verwenden. Ein einzelner, mit "Exportieren" exportierter Fingerabdruck wird genauso wiederhergestellt und kommt in den nächsten freien Platz.',
+    'Choose file': 'Datei wählen',
+    'Overwrite same slots': 'Gleiche Plätze überschreiben',
+    'Add to free slots': 'In freie Plätze einfügen',
+    'Delete all first': 'Vorher alles löschen',
+    '"Ignore touch ring" scans without the ring signal and is reset by a restart. More details under Settings, LED ring.': '"Touch-Ring ignorieren" scannt ohne das Ringsignal und wird durch einen Neustart zurückgesetzt. Mehr dazu unter Einstellungen, LED-Ring.',
+    'General': 'Allgemein',
+    'GPIO pins': 'GPIO-Pins',
+    'Touch the ring: it should change to "touched". If it never does, the wake-up wire or the touch power (3.3V touch) of the sensor is not connected. "Ignore touch ring" scans without that signal and is reset by a restart. The view shows how the ring should look, it does not read the real light of the sensor.': 'Berühre den Ring: Die Anzeige sollte auf "berührt" wechseln. Wenn nicht, ist die Wake-up-Leitung oder die Touch-Versorgung (3,3V Touch) des Sensors nicht angeschlossen. "Touch-Ring ignorieren" scannt ohne dieses Signal und wird durch einen Neustart zurückgesetzt. Die Anzeige zeigt, wie der Ring aussehen sollte, sie liest nicht das echte Licht des Sensors aus.',
+    'Only the idle light is switched off, while scanning the ring still shows its colors. Needs a working time (NTP).': 'Nur das Ruhelicht wird ausgeschaltet, beim Scannen zeigt der Ring weiter seine Farben. Braucht eine funktionierende Uhrzeit (NTP).',
+    'For a presence radar like the HLK-LD2410: VCC to 5V, GND to GND, OUT to the GPIO below. Presence is published to MQTT ("presence") and Home Assistant.': 'Für ein Anwesenheitsradar wie den HLK-LD2410: VCC an 5V, GND an GND, OUT an den GPIO unten. Die Anwesenheit wird per MQTT ("presence") und an Home Assistant gemeldet.',
+    'New pins are used after a restart.': 'Neue Pins werden nach einem Neustart verwendet.',
+    'Only pins that work for the function are offered (classic ESP32, e.g. DevKit V1 with ESP32-WROOM-32). Every pin can only be used once. If the sensor is not found afterwards, set the original pins again (RX 16, TX 17, touch 5, doorbell 19, door opener 23).': 'Es werden nur Pins angeboten, die für die Funktion wirklich funktionieren (klassischer ESP32, z. B. DevKit V1 mit ESP32-WROOM-32). Jeder Pin kann nur einmal verwendet werden. Wird der Sensor danach nicht gefunden, stelle die ursprünglichen Pins wieder ein (RX 16, TX 17, Touch 5, Klingel 19, Türöffner 23).',
     'Export': 'Exportieren',
     'No fingerprint selected.': 'Kein Fingerabdruck ausgewählt.',
     'Add to free slots (keep existing fingerprints)': 'In freie Plätze einfügen (vorhandene Fingerabdrücke behalten)',
@@ -318,10 +336,7 @@
     [/^NOT CONNECTED since (.+) \(automatic retries stopped, use Reconnect sensor on the Log page\)$/, function (m, a) { return 'NICHT VERBUNDEN seit ' + since(a) + ' (automatische Versuche beendet, "Sensor neu verbinden" im Protokoll verwenden)'; }],
     [/^NOT CONNECTED \(since (.+), (\d+) losses, retrying automatically\)$/, function (m, a, b) { return 'NICHT VERBUNDEN (seit ' + since(a) + ', ' + b + ' Abbrüche, versuche automatisch)'; }],
     [/^Fingerprint sensor: (.+)$/, function (m, a) { return 'Fingerabdrucksensor: ' + t(a); }],
-    [/^Currently: (.+?)\. Only the idle light is switched off, while scanning the ring still shows its colors\. Needs a working time \(NTP\)\.$/, function (m, a) {
-      return 'Aktuell: ' + t(a) + '. Nur das Ruhelicht wird ausgeschaltet, beim Scannen zeigt der Ring weiter seine Farben. Braucht eine funktionierende Uhrzeit (NTP).'; }],
-    [/^Currently: (.+?)\. For a presence radar like the HLK-LD2410: VCC to 5V, GND to GND, OUT to the GPIO below\. Presence is published to MQTT \("presence"\) and Home Assistant\.$/, function (m, a) {
-      return 'Aktuell: ' + t(a) + '. Für ein Anwesenheitsradar wie den HLK-LD2410: VCC an 5V, GND an GND, OUT an den GPIO unten. Die Anwesenheit wird per MQTT ("presence") und an Home Assistant gemeldet.'; }],
+    [/^Currently: (.+)$/, function (m, a) { return 'Aktuell: ' + t(a); }],
     [/^(\d+) recent failed attempts$/, '$1 Fehlversuche zuletzt'],
     [/^Lockout active, (\d+)s left$/, 'Sperre aktiv, noch $1s'],
     [/^(\d+) connects, (\d+) lost$/, '$1 Verbindungen, $2 verloren'],
@@ -345,6 +360,7 @@
     [/^somebody detected$/, 'jemand erkannt'],
     [/^nobody detected$/, 'niemand erkannt'],
     [/^(Red|Blue|Purple|Green|Yellow|Cyan|White), (breathing|blinking|steady)$/, function (m, a, b) { return de[a] + ', ' + de[b]; }],
+    [/^Fingerprints \((\d+)\)$/, 'Fingerabdrücke ($1)'],
     [/^Fingerprint exported from slot (\d+)\.$/, 'Fingerabdruck aus Platz $1 exportiert.'],
     [/^Export failed: there is no fingerprint in slot (\d+)\.$/, 'Export fehlgeschlagen: In Platz $1 ist kein Fingerabdruck gespeichert.'],
     [/^Backup created with (\d+) fingerprints\.$/, 'Sicherung mit $1 Fingerabdrücken erstellt.'],
@@ -393,9 +409,42 @@
     (lang === 'de' ? 'body{visibility:hidden}' : '');
   document.head.appendChild(style);
 
+  // light / dark switch next to the language switch, the choice is only remembered by this browser (no setting on the device)
+  var SUN = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+  var MOON = '<svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  try {
+    var savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'light' || savedTheme === 'dark') document.documentElement.setAttribute('data-theme', savedTheme);
+  } catch (e) { }
+  function currentTheme() {
+    var set = document.documentElement.getAttribute('data-theme');
+    if (set) return set;
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  document.addEventListener('DOMContentLoaded', function () {
+    var host = document.querySelector('.lang-switch');
+    if (!host) return;
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'theme-switch';
+    function render() {
+      var dark = currentTheme() === 'dark';
+      button.innerHTML = dark ? SUN : MOON; // the icon shows what a click switches to
+      button.title = translate('Switch between light and dark');
+    }
+    button.addEventListener('click', function () {
+      var next = currentTheme() === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('theme', next); } catch (e) { }
+      render();
+    });
+    render();
+    host.appendChild(button);
+  });
+
   if (lang !== 'de') return;
 
-  var attributes = ['placeholder', 'title', 'alt'];
+  var attributes = ['placeholder', 'title', 'alt', 'data-tip'];
   function skip(node) {
     for (var e = node.nodeType === 1 ? node : node.parentNode; e; e = e.parentNode)
       if (e.nodeType === 1 && (e.tagName === 'SCRIPT' || e.tagName === 'STYLE' || (e.classList && e.classList.contains('notranslate'))))
