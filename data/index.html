@@ -6,42 +6,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" charset="utf-8">
   <link rel="icon" href="data:,">
   <link rel="stylesheet" type="text/css" href="bootstrap.min.css">
+  <link rel="stylesheet" type="text/css" href="style.css?v=%VERSIONINFO%">
   <script src="i18n.js?v=%VERSIONINFO%"></script>
-  <style>
-	.alert-custom{
-		background-color:#cecece;
-		color:rgb(0, 0, 0);
-	}
-	.form-horizontal{
-		margin-left: 15px;
-		margin-right: 15px;
-	}
-	.collapsible {
-		margin-bottom: 15px;
-	}
-	.collapsible summary {
-		cursor: pointer;
-		font-weight: bold;
-		color: #337ab7;
-		margin: 0 0 15px 0;
-		list-style: none;
-	}
-	.collapsible summary::-webkit-details-marker {
-		display: none;
-	}
-	.collapsible summary::before {
-		content: "\25B8";
-		display: inline-block;
-		width: 1.2em;
-	}
-	.collapsible[open] summary::before {
-		content: "\25BE";
-	}
-	.weekdays label {
-		margin-right: 10px;
-		font-weight: normal;
-	}
-  </style>
 </head>
 <body>
 	<script>
@@ -68,7 +34,7 @@
 					firstMessage = false;
 					try { show = sessionStorage.getItem('showStatus') === '1'; sessionStorage.removeItem('showStatus'); } catch (err) {}
 				}
-				if (!show) return;
+				if (!show || backupJobActive) return;
 				var box = document.getElementById('statusBox');
 				box.innerHTML = e.data;
 				box.style.display = '';
@@ -130,21 +96,26 @@
 		function fillAccessForm()
 		{
 			var option = selectedFingerOption();
-			var form = document.getElementById('accessForm');
-			if (!form) return;
+			var panel = document.getElementById('fingerDetail');
+			if (!panel) return;
+			panel.classList.toggle('empty', !option);
+			var inputs = panel.querySelectorAll('button, input');
+			for (var k = 0; k < inputs.length; k++) inputs[k].disabled = !option;
 			if (!option) {
 				document.getElementById('accessFingerLabel').textContent = '(no finger selected)';
+				document.getElementById('accessFingerSlot').textContent = '';
 				return;
 			}
 			document.getElementById('accessFingerId').value = option.value;
-			document.getElementById('accessFingerLabel').textContent = option.value + ' - ' + (option.getAttribute('data-name') || '');
+			document.getElementById('accessFingerSlot').textContent = option.value;
+			document.getElementById('accessFingerLabel').textContent = option.getAttribute('data-name') || '';
 			var days = parseInt(option.getAttribute('data-days'), 10);
 			var from = parseInt(option.getAttribute('data-from'), 10);
 			var to = parseInt(option.getAttribute('data-to'), 10);
 			var mode = 'always';
 			if (days === 0) mode = 'disabled';
 			else if (!(days === 127 && from === 0 && to === 1440)) mode = 'restricted';
-			form.querySelector('input[name=accessMode][value=' + mode + ']').checked = true;
+			document.querySelector('input[name=accessMode][value=' + mode + ']').checked = true;
 			for (var d = 0; d < 7; d++)
 				document.getElementById('day' + d).checked = mode !== 'restricted' || (days & (1 << d)) !== 0;
 			document.getElementById('accessFrom').value = minutesToTime(mode === 'restricted' ? from : 0);
@@ -159,6 +130,12 @@
 		}
 
 		// backup / restore: the sensor work is done by the device in the background, so poll the status
+		// while a backup/export/restore runs its progress is shown next to the buttons, not in the status box at the top
+		var backupJobActive = false;
+		var backupJobTimer = null;
+		function startBackupJob() { clearTimeout(backupJobTimer); backupJobActive = true; backupJobTimer = setTimeout(function () { backupJobActive = false; }, 120000); }
+		function endBackupJob() { clearTimeout(backupJobTimer); backupJobTimer = setTimeout(function () { backupJobActive = false; }, 3000); }
+
 		function setBackupStatus(text, isError)
 		{
 			var ids = ['backupStatus', 'exportStatus'];
@@ -178,6 +155,7 @@
 					setTimeout(function () { pollBackupStatus(onDone); }, 1000);
 				} else {
 					setBackupStatus(status.message, status.state === 'error');
+					endBackupJob();
 					document.getElementById('btnCreateBackup').disabled = false;
 					document.getElementById('btnRestore').disabled = false;
 					if (status.state === 'done' && onDone) onDone();
@@ -187,6 +165,7 @@
 
 		function createBackup()
 		{
+			startBackupJob();
 			document.getElementById('btnCreateBackup').disabled = true;
 			setBackupStatus('Starting backup...', false);
 			fetch('/backup/create', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (status) {
@@ -207,6 +186,7 @@
 				setBackupStatus(t('No fingerprint selected.'), true);
 				return;
 			}
+			startBackupJob();
 			document.getElementById('btnExport').disabled = true;
 			setBackupStatus(t('Starting backup...'), false);
 			fetch('/backup/create?id=' + encodeURIComponent(option.value), { method: 'POST' }).then(function (r) { return r.json(); }).then(function (status) {
@@ -222,23 +202,13 @@
 			});
 		}
 
-		// the two restore options exclude each other
-		function restoreOptionChanged(changed)
-		{
-			var clear = document.getElementById('clearFirst');
-			var free = document.getElementById('addToFree');
-			if (changed === 'clear' && clear.checked) free.checked = false;
-			if (changed === 'free' && free.checked) clear.checked = false;
-		}
-
 		// a file of a single fingerprint ("finger-5-...") is added to a free slot by default
 		function restoreFileChanged()
 		{
 			var fileInput = document.getElementById('restoreFile');
-			if (fileInput.files.length && fileInput.files[0].name.indexOf('finger-') === 0) {
-				document.getElementById('addToFree').checked = true;
-				restoreOptionChanged('free');
-			}
+			document.getElementById('restoreFileName').textContent = fileInput.files.length ? fileInput.files[0].name : t('Choose file');
+			if (fileInput.files.length && fileInput.files[0].name.indexOf('finger-') === 0)
+				document.getElementById('restoreMode').value = 'free';
 		}
 
 		function restoreBackup()
@@ -248,8 +218,9 @@
 				setBackupStatus('Please choose a backup file first.', true);
 				return;
 			}
-			var clearFirst = document.getElementById('clearFirst').checked;
-			var addToFree = document.getElementById('addToFree').checked;
+			var mode = document.getElementById('restoreMode').value;
+			var clearFirst = mode === 'clear';
+			var addToFree = mode === 'free';
 			var warning = clearFirst ? 'All fingerprints currently stored on the sensor will be deleted first!' : (addToFree ? 'The fingerprints are added to the next free slots, nothing is overwritten.' : 'Fingerprints with the same slot number will be overwritten.');
 			if (!confirm(t('Restore the fingerprints from') + ' "' + fileInput.files[0].name + '"?\n' + t(warning)))
 				return;
@@ -257,6 +228,7 @@
 			if (clearFirst) data.append('clearFirst', 'on');
 			else if (addToFree) data.append('addToFree', 'on');
 			data.append('file', fileInput.files[0]);
+			startBackupJob();
 			document.getElementById('btnRestore').disabled = true;
 			setBackupStatus('Uploading...', false);
 			fetch('/backup/restore', { method: 'POST', body: data }).then(function (r) { return r.json(); }).then(function (status) {
@@ -297,168 +269,94 @@
 
 	<div class="alert alert-custom notranslate" id="statusBox" role="alert" style="display: none"></div>
 
-	<form class="form-horizontal" action="/editFingerprints" onsubmit="return rememberStatus()">
-	<fieldset>
-
-	<!-- Form Name -->
-	<legend>Manage fingerprints (%FINGER_COUNT%)</legend>
-
-	<!-- Select Multiple -->
-	<div class="form-group">
-	  <label class="col-md-4 control-label" for="selectedFingerprint">Fingerprints in DB</label>
-	  <div class="col-md-4">
-		<select id="selectedFingerprint" name="selectedFingerprint" class="form-control" size="10">
-		  %FINGERLIST%
-		</select>
-		<input type="hidden" id="renameNewName" name="renameNewName" type="text" class="form-control input-md">
-		<small class="text-muted">Access times are shown in brackets, e.g. [Mo,Tu 08:00-12:00].</small>
-	  </div>
-	</div>
-
-	<!-- Button (Double) -->
-	<div class="form-group">
-	  <label class="col-md-4 control-label" for="btnRename"></label>
-	  <div class="col-md-8">
-		<button id="btnRename" name="btnRename" class="btn btn-info" onclick="askForNewName(event)">Rename</button>
-		<button id="btnExport" type="button" class="btn btn-default" onclick="exportFinger()">Export</button>
-		<button id="btnDelete" name="btnDelete" class="btn btn-danger" onclick="return confirm(t('Delete the selected fingerprint?'))">Delete</button><br>
-		<small id="exportStatus" class="text-muted"></small>
-	  </div>
-	</div>
-
-	</fieldset>
-	</form>
-
-	<form class="form-horizontal" id="accessForm" action="/access" method="post">
-	<details class="collapsible">
-	<summary>Access times of the selected finger</summary>
-	<input type="hidden" id="accessFingerId" name="accessFingerId" value="">
-
-	<div class="form-group">
-	  <label class="col-md-4 control-label">Finger</label>
-	  <div class="col-md-4">
-		<p class="form-control-static" id="accessFingerLabel"></p>
-	  </div>
-	</div>
-
-	<div class="form-group">
-	  <label class="col-md-4 control-label">Access</label>
-	  <div class="col-md-4">
-		<label class="radio-inline"><input type="radio" name="accessMode" value="always" checked> Always</label>
-		<label class="radio-inline"><input type="radio" name="accessMode" value="restricted"> Only at certain times</label>
-		<label class="radio-inline"><input type="radio" name="accessMode" value="disabled"> Disabled</label>
-	  </div>
-	</div>
-
-	<div id="accessRestrictions">
-	  <div class="form-group">
-		<label class="col-md-4 control-label">Weekdays</label>
-		<div class="col-md-4 weekdays">
-		  <label><input type="checkbox" id="day0" name="day0"> Mo</label>
-		  <label><input type="checkbox" id="day1" name="day1"> Tu</label>
-		  <label><input type="checkbox" id="day2" name="day2"> We</label>
-		  <label><input type="checkbox" id="day3" name="day3"> Th</label>
-		  <label><input type="checkbox" id="day4" name="day4"> Fr</label>
-		  <label><input type="checkbox" id="day5" name="day5"> Sa</label>
-		  <label><input type="checkbox" id="day6" name="day6"> Su</label>
-		</div>
-	  </div>
-	  <div class="form-group">
-		<label class="col-md-4 control-label" for="accessFrom">Time</label>
-		<div class="col-md-2">
-		  <input type="time" id="accessFrom" name="accessFrom" class="form-control" value="00:00">
-		</div>
-		<div class="col-md-2">
-		  <input type="time" id="accessTo" name="accessTo" class="form-control" value="23:59">
-		</div>
-		<div class="col-md-4 col-md-offset-4">
-		  <small class="text-muted">From - to. A window over midnight (e.g. 22:00 - 06:00) is possible. Outside of the allowed times the finger is
-			not accepted: no match is published, the door is not opened and "accessDenied" is published instead. Needs a working time (NTP).</small>
-		</div>
-	  </div>
-	</div>
-
-	<div class="form-group">
-	  <label class="col-md-4 control-label"></label>
-	  <div class="col-md-4">
-		<button id="btnSaveAccess" name="btnSaveAccess" class="btn btn-success">Save access times</button>
-	  </div>
-	</div>
-	</details>
-	</form>
-
-	<form class="form-horizontal" action="/enroll" onsubmit="return rememberStatus()">
-	<fieldset>
-
-	<!-- Form Name -->
-	<legend>Add/Replace fingerprint</legend>
-
-	<!-- Text input-->
-	<div class="form-group">
-	  <label class="col-md-4 control-label" for="newFingerprintId">Memory slot (1-200)</label>
-	  <div class="col-md-4">
-	  <input id="newFingerprintId" name="newFingerprintId" type="text" placeholder="1-200" class="form-control input-md" required="">
-	  <small class="text-muted">The sensor has 200 memory slots available for storing fingerprints. The choosen slot number will also be used as an ID when matches are published by MQTT.</small>
-	  </div>
-	</div>
-
-	<!-- Text input-->
-	<div class="form-group">
-	  <label class="col-md-4 control-label" for="newFingerprintName">Name</label>
-	  <div class="col-md-4">
-	  <input id="newFingerprintName" name="newFingerprintName" type="text" placeholder="(optional)" class="form-control input-md">
-	  <small class="text-muted">Just for human readability you can additionally assign an name to your slot number. The name will also been published by MQTT.<br>
-		If the name ends with a '#' the door opener output pin is activated, too.</small>
-	  </div>
-	</div>
-
-	<!-- Button -->
-	<div class="form-group">
-	  <label class="col-md-4 control-label" for="startEnrollment"></label>
-	  <div class="col-md-4">
-		<button id="startEnrollment" name="startEnrollment" class="btn btn-success">Start enrollment</button>
-	  </div>
-	</div>
-
-	</fieldset>
-	</form>
+	<!-- the three forms of this page are empty on purpose: the inputs and buttons reference them with the form attribute, so the layout is free -->
+	<form id="editForm" action="/editFingerprints" onsubmit="return rememberStatus()"></form>
+	<form id="enrollForm" action="/enroll" onsubmit="return rememberStatus()"></form>
+	<form id="accessForm" action="/access" method="post"></form>
 
 	<div class="form-horizontal">
-	<fieldset>
-	<legend>Backup &amp; restore</legend>
+	<h2 class="card-title">Fingerprints (%FINGER_COUNT%)</h2>
 
-	<div class="form-group">
-	  <label class="col-md-4 control-label">Backup</label>
-	  <div class="col-md-4">
-		<button id="btnCreateBackup" type="button" class="btn btn-info" onclick="createBackup()">Create and download backup</button><br>
-		<small class="text-muted">Saves all fingerprints (sensor templates), their names and access times to a file. Keep it in a safe
-		  place, it contains your fingerprint data!</small>
-	  </div>
+	<div class="addbar">
+	  <span class="addbar-label"><svg class="ic" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add / replace</span>
+	  <input id="newFingerprintId" name="newFingerprintId" form="enrollForm" type="text" inputmode="numeric" placeholder="Slot 1-200" title="Memory slot" class="form-control input-md slot-input" required="">
+	  <span class="tip" tabindex="0" data-tip="The sensor has 200 memory slots available for storing fingerprints. The choosen slot number will also be used as an ID when matches are published by MQTT.">i</span>
+	  <input id="newFingerprintName" name="newFingerprintName" form="enrollForm" type="text" placeholder="Name (optional)" class="form-control input-md name-input">
+	  <span class="tip r" tabindex="0" data-tip="Just for human readability you can additionally assign an name to your slot number. The name will also been published by MQTT. If the name ends with a '#' the door opener output pin is activated, too.">i</span>
+	  <button id="startEnrollment" name="startEnrollment" form="enrollForm" class="btn btn-primary">Start enrollment</button>
 	</div>
 
-	<div class="form-group">
-	  <label class="col-md-4 control-label" for="restoreFile">Restore</label>
-	  <div class="col-md-4">
-		<input type="file" id="restoreFile" accept=".fpdb" onchange="restoreFileChanged()">
-		<div class="checkbox">
-		  <label><input type="checkbox" id="clearFirst" onchange="restoreOptionChanged('clear')"> Delete all fingerprints on the sensor first</label>
+	<div class="finger-grid">
+	  <div class="finger-list">
+		<select id="selectedFingerprint" name="selectedFingerprint" form="editForm" class="form-control" size="8">
+		  %FINGERLIST%
+		</select>
+		<input type="hidden" id="renameNewName" name="renameNewName" form="editForm">
+	  </div>
+
+	  <div class="finger-detail empty" id="fingerDetail">
+		<div class="detail-head">
+		  <div class="detail-title"><span class="slot-badge" id="accessFingerSlot"></span><span id="accessFingerLabel"></span></div>
+		  <div class="icon-actions">
+			<button id="btnRename" name="btnRename" form="editForm" class="btn btn-default btn-icon" title="Rename" onclick="askForNewName(event)"><svg class="ic" viewBox="0 0 24 24"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg><span>Rename</span></button>
+			<button id="btnExport" type="button" class="btn btn-default btn-icon" title="Export" onclick="exportFinger()"><svg class="ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span>Export</span></button>
+			<button id="btnDelete" name="btnDelete" form="editForm" class="btn btn-danger btn-icon" title="Delete" onclick="return confirm(t('Delete the selected fingerprint?'))"><svg class="ic" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg><span>Delete</span></button>
+		  </div>
 		</div>
-		<div class="checkbox">
-		  <label><input type="checkbox" id="addToFree" onchange="restoreOptionChanged('free')"> Add to free slots (keep existing fingerprints)</label>
+		<small id="exportStatus" class="text-muted"></small>
+
+		<input type="hidden" id="accessFingerId" name="accessFingerId" form="accessForm" value="">
+		<div class="detail-section">
+		  <div class="detail-label"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Access <span class="tip" tabindex="0" data-tip="From - to. A window over midnight (e.g. 22:00 - 06:00) is possible. Outside of the allowed times the finger is not accepted: no match is published, the door is not opened and &quot;accessDenied&quot; is published instead. Needs a working time (NTP).">i</span></div>
+		  <div class="seg">
+			<label><input type="radio" name="accessMode" form="accessForm" value="always" checked><span>Always</span></label>
+			<label><input type="radio" name="accessMode" form="accessForm" value="restricted"><span>Only at certain times</span></label>
+			<label><input type="radio" name="accessMode" form="accessForm" value="disabled"><span>Disabled</span></label>
+		  </div>
+		  <div id="accessRestrictions">
+			<div class="chips weekdays">
+			  <label class="chip"><input type="checkbox" id="day0" name="day0" form="accessForm"><span>Mo</span></label>
+			  <label class="chip"><input type="checkbox" id="day1" name="day1" form="accessForm"><span>Tu</span></label>
+			  <label class="chip"><input type="checkbox" id="day2" name="day2" form="accessForm"><span>We</span></label>
+			  <label class="chip"><input type="checkbox" id="day3" name="day3" form="accessForm"><span>Th</span></label>
+			  <label class="chip"><input type="checkbox" id="day4" name="day4" form="accessForm"><span>Fr</span></label>
+			  <label class="chip"><input type="checkbox" id="day5" name="day5" form="accessForm"><span>Sa</span></label>
+			  <label class="chip"><input type="checkbox" id="day6" name="day6" form="accessForm"><span>Su</span></label>
+			</div>
+			<div class="timerange">
+			  <input type="time" id="accessFrom" name="accessFrom" form="accessForm" class="form-control" value="00:00">
+			  <span>-</span>
+			  <input type="time" id="accessTo" name="accessTo" form="accessForm" class="form-control" value="23:59">
+			</div>
+		  </div>
+		  <button id="btnSaveAccess" name="btnSaveAccess" form="accessForm" class="btn btn-primary">Save access times</button>
 		</div>
-		<button id="btnRestore" type="button" class="btn btn-warning" onclick="restoreBackup()">Restore backup</button><br>
-		<small class="text-muted">Also works with a new sensor. After replacing the sensor use "Pair a new sensor" in the sensor section below.
-		  A single fingerprint exported with "Export" in the list above is restored the same way and goes to the next free slot.</small>
 	  </div>
+	</div>
 	</div>
 
-	<div class="form-group">
-	  <label class="col-md-4 control-label"></label>
-	  <div class="col-md-4">
-		<span id="backupStatus" class="text-muted"></span>
+	<div class="form-horizontal">
+	<h2 class="card-title">Backup &amp; restore</h2>
+	<div class="backup-grid">
+	  <div class="backup-box">
+		<div class="detail-label">Backup <span class="tip" tabindex="0" data-tip="Saves all fingerprints (sensor templates), their names and access times to a file. Keep it in a safe place, it contains your fingerprint data!">i</span></div>
+		<button id="btnCreateBackup" type="button" class="btn btn-default btn-icon" onclick="createBackup()"><svg class="ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span>Create and download backup</span></button>
+	  </div>
+	  <div class="backup-box">
+		<div class="detail-label">Restore <span class="tip" tabindex="0" data-tip="Also works with a new sensor. After replacing the sensor use &quot;Pair a new sensor&quot; in the sensor section below. A single fingerprint exported with &quot;Export&quot; is restored the same way and goes to the next free slot.">i</span></div>
+		<div class="restore-row">
+		  <label class="file-pick btn btn-default btn-icon" for="restoreFile"><svg class="ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span id="restoreFileName">Choose file</span></label>
+		  <input type="file" id="restoreFile" accept=".fpdb" onchange="restoreFileChanged()" class="file-hidden">
+		  <select id="restoreMode" class="form-control">
+			<option value="overwrite">Overwrite same slots</option>
+			<option value="free">Add to free slots</option>
+			<option value="clear">Delete all first</option>
+		  </select>
+		  <button id="btnRestore" type="button" class="btn btn-default" onclick="restoreBackup()">Restore backup</button>
+		</div>
 	  </div>
 	</div>
-	</fieldset>
+	<small id="backupStatus" class="text-muted"></small>
 	</div>
 
 	<form class="form-horizontal" onsubmit="return rememberStatus()">
@@ -485,7 +383,7 @@
 	  <div class="col-md-8">
 		<label class="checkbox-inline"><input type="checkbox" id="ringLedSwitch"> LED ring on</label>
 		<label class="checkbox-inline"><input type="checkbox" id="ringIgnoreSwitch"> Ignore touch ring</label><br>
-		<small class="text-muted">Touch ring pin (GPIO 5): <b id="ringPin">?</b>. "Ignore touch ring" scans without the ring signal and is reset by a restart. More details under Settings, LED ring.</small>
+		<small class="text-muted">Touch ring pin (GPIO 5): <b id="ringPin">?</b></small> <span class="tip" tabindex="0" data-tip="&quot;Ignore touch ring&quot; scans without the ring signal and is reset by a restart. More details under Settings, LED ring.">i</span>
 	  </div>
 	</div>
 	<script>
@@ -519,10 +417,9 @@
 	</script>
 
 	<div class="form-group">
-	  <label class="col-md-4 control-label">Pairing</label>
+	  <label class="col-md-4 control-label">Pairing <span class="tip" tabindex="0" data-tip="Needed after replacing the sensor. The sensor only accepts this device afterwards.">i</span></label>
 	  <div class="col-md-4">
-		<button id="btnDoPairing" name="btnDoPairing" class="btn btn-warning" type="submit" formaction="pairing">Pair a new sensor</button><br>
-		<small class="text-muted">Needed after replacing the sensor. The sensor only accepts this device afterwards.</small>
+		<button id="btnDoPairing" name="btnDoPairing" class="btn btn-default" type="submit" formaction="pairing">Pair a new sensor</button>
 	  </div>
 	</div>
 
