@@ -161,9 +161,13 @@
 		// backup / restore: the sensor work is done by the device in the background, so poll the status
 		function setBackupStatus(text, isError)
 		{
-			var el = document.getElementById('backupStatus');
-			el.textContent = text;
-			el.className = isError ? 'text-danger' : 'text-muted';
+			var ids = ['backupStatus', 'exportStatus'];
+			for (var i = 0; i < ids.length; i++) {
+				var el = document.getElementById(ids[i]);
+				if (!el) continue;
+				el.textContent = text;
+				el.className = isError ? 'text-danger' : 'text-muted';
+			}
 		}
 
 		function pollBackupStatus(onDone)
@@ -195,6 +199,48 @@
 			});
 		}
 
+		// exports only the selected fingerprint (slot number, name, access times and template) as .fpdb file
+		function exportFinger()
+		{
+			var option = selectedFingerOption();
+			if (!option) {
+				setBackupStatus(t('No fingerprint selected.'), true);
+				return;
+			}
+			document.getElementById('btnExport').disabled = true;
+			setBackupStatus(t('Starting backup...'), false);
+			fetch('/backup/create?id=' + encodeURIComponent(option.value), { method: 'POST' }).then(function (r) { return r.json(); }).then(function (status) {
+				if (status.state === 'error') {
+					setBackupStatus(status.message, true);
+					document.getElementById('btnExport').disabled = false;
+					return;
+				}
+				pollBackupStatus(function () { document.getElementById('btnExport').disabled = false; window.location = '/backup/download'; });
+			}).catch(function () {
+				setBackupStatus(t('request failed'), true);
+				document.getElementById('btnExport').disabled = false;
+			});
+		}
+
+		// the two restore options exclude each other
+		function restoreOptionChanged(changed)
+		{
+			var clear = document.getElementById('clearFirst');
+			var free = document.getElementById('addToFree');
+			if (changed === 'clear' && clear.checked) free.checked = false;
+			if (changed === 'free' && free.checked) clear.checked = false;
+		}
+
+		// a file of a single fingerprint ("finger-5-...") is added to a free slot by default
+		function restoreFileChanged()
+		{
+			var fileInput = document.getElementById('restoreFile');
+			if (fileInput.files.length && fileInput.files[0].name.indexOf('finger-') === 0) {
+				document.getElementById('addToFree').checked = true;
+				restoreOptionChanged('free');
+			}
+		}
+
 		function restoreBackup()
 		{
 			var fileInput = document.getElementById('restoreFile');
@@ -203,10 +249,13 @@
 				return;
 			}
 			var clearFirst = document.getElementById('clearFirst').checked;
-			if (!confirm(t('Restore the fingerprints from') + ' "' + fileInput.files[0].name + '"?\n' + t(clearFirst ? 'All fingerprints currently stored on the sensor will be deleted first!' : 'Fingerprints with the same slot number will be overwritten.')))
+			var addToFree = document.getElementById('addToFree').checked;
+			var warning = clearFirst ? 'All fingerprints currently stored on the sensor will be deleted first!' : (addToFree ? 'The fingerprints are added to the next free slots, nothing is overwritten.' : 'Fingerprints with the same slot number will be overwritten.');
+			if (!confirm(t('Restore the fingerprints from') + ' "' + fileInput.files[0].name + '"?\n' + t(warning)))
 				return;
 			var data = new FormData();
 			if (clearFirst) data.append('clearFirst', 'on');
+			else if (addToFree) data.append('addToFree', 'on');
 			data.append('file', fileInput.files[0]);
 			document.getElementById('btnRestore').disabled = true;
 			setBackupStatus('Uploading...', false);
@@ -271,7 +320,9 @@
 	  <label class="col-md-4 control-label" for="btnRename"></label>
 	  <div class="col-md-8">
 		<button id="btnRename" name="btnRename" class="btn btn-info" onclick="askForNewName(event)">Rename</button>
-		<button id="btnDelete" name="btnDelete" class="btn btn-danger" onclick="return confirm(t('Delete the selected fingerprint?'))">Delete</button>
+		<button id="btnExport" type="button" class="btn btn-default" onclick="exportFinger()">Export</button>
+		<button id="btnDelete" name="btnDelete" class="btn btn-danger" onclick="return confirm(t('Delete the selected fingerprint?'))">Delete</button><br>
+		<small id="exportStatus" class="text-muted"></small>
 	  </div>
 	</div>
 
@@ -388,12 +439,16 @@
 	<div class="form-group">
 	  <label class="col-md-4 control-label" for="restoreFile">Restore</label>
 	  <div class="col-md-4">
-		<input type="file" id="restoreFile" accept=".fpdb">
+		<input type="file" id="restoreFile" accept=".fpdb" onchange="restoreFileChanged()">
 		<div class="checkbox">
-		  <label><input type="checkbox" id="clearFirst"> Delete all fingerprints on the sensor first</label>
+		  <label><input type="checkbox" id="clearFirst" onchange="restoreOptionChanged('clear')"> Delete all fingerprints on the sensor first</label>
+		</div>
+		<div class="checkbox">
+		  <label><input type="checkbox" id="addToFree" onchange="restoreOptionChanged('free')"> Add to free slots (keep existing fingerprints)</label>
 		</div>
 		<button id="btnRestore" type="button" class="btn btn-warning" onclick="restoreBackup()">Restore backup</button><br>
-		<small class="text-muted">Also works with a new sensor. After replacing the sensor use "Pair a new sensor" in the sensor section below.</small>
+		<small class="text-muted">Also works with a new sensor. After replacing the sensor use "Pair a new sensor" in the sensor section below.
+		  A single fingerprint exported with "Export" in the list above is restored the same way and goes to the next free slot.</small>
 	  </div>
 	</div>
 

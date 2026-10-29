@@ -50,9 +50,10 @@ String BackupManager::getStatusJson()
   return String("{\"state\":\"") + stateText + "\",\"progress\":" + progress + ",\"total\":" + total + ",\"message\":\"" + escaped + "\"}";
 }
 
-bool BackupManager::createBackup(FingerprintManager &fingerManager, AccessControl &accessControl)
+bool BackupManager::createBackup(FingerprintManager &fingerManager, AccessControl &accessControl, uint16_t singleId)
 {
   setRunning("Creating backup...");
+  exportedId = 0;
 
   uint16_t slots = fingerManager.getCapacity();
   if (slots == 0 || slots > 256)
@@ -64,10 +65,16 @@ bool BackupManager::createBackup(FingerprintManager &fingerManager, AccessContro
     return false;
   }
 
+  if (singleId != 0 && (singleId >= slots || singleId > 200 || !occupied[singleId]))
+  {
+    finish(State::error, String("Export failed: there is no fingerprint in slot ") + singleId + ".");
+    return false;
+  }
+
   uint16_t count = 0;
   for (uint16_t id = 1; id < slots && id <= 200; id++)
   {
-    if (occupied[id])
+    if (occupied[id] && (singleId == 0 || id == singleId))
       count++;
   }
   total = count;
@@ -94,7 +101,7 @@ bool BackupManager::createBackup(FingerprintManager &fingerManager, AccessContro
   bool ok = true;
   for (uint16_t id = 1; id < slots && id <= 200 && ok; id++)
   {
-    if (!occupied[id])
+    if (!occupied[id] || (singleId != 0 && id != singleId))
       continue;
 
     int length = fingerManager.readTemplate(id, buffer, MaxTemplateSize);
@@ -137,11 +144,15 @@ bool BackupManager::createBackup(FingerprintManager &fingerManager, AccessContro
     finish(State::error, message);
     return false;
   }
-  finish(State::done, String("Backup created with ") + count + " fingerprints.");
+  exportedId = singleId;
+  if (singleId != 0)
+    finish(State::done, String("Fingerprint exported from slot ") + singleId + ".");
+  else
+    finish(State::done, String("Backup created with ") + count + " fingerprints.");
   return true;
 }
 
-bool BackupManager::restoreBackup(FingerprintManager &fingerManager, AccessControl &accessControl, bool clearFirst)
+bool BackupManager::restoreBackup(FingerprintManager &fingerManager, AccessControl &accessControl, RestoreMode mode)
 {
   setRunning("Restoring backup...");
 
@@ -172,7 +183,21 @@ bool BackupManager::restoreBackup(FingerprintManager &fingerManager, AccessContr
     return false;
   }
 
-  if (clearFirst)
+  // slot usage on the sensor, needed to find the next free slot
+  bool occupied[256];
+  uint16_t slots = fingerManager.getCapacity();
+  if (slots == 0 || slots > 256)
+    slots = 200;
+  if (mode == RestoreMode::addToFree && !fingerManager.readIndexTable(occupied, slots))
+  {
+    free(buffer);
+    file.close();
+    SPIFFS.remove(RestoreFile);
+    finish(State::error, "Restore failed: could not read the template index from the sensor.");
+    return false;
+  }
+
+  if (mode == RestoreMode::clearFirst)
   {
     fingerManager.deleteAll();
     for (int id = 1; id <= 200; id++)
@@ -199,6 +224,26 @@ bool BackupManager::restoreBackup(FingerprintManager &fingerManager, AccessContr
     }
     name[nameLength] = 0;
 
+    if (mode == RestoreMode::addToFree)
+    {
+      uint16_t freeId = 0;
+      for (uint16_t candidate = 1; candidate < slots && candidate <= 200; candidate++)
+      {
+        if (!occupied[candidate])
+        {
+          freeId = candidate;
+          break;
+        }
+      }
+      if (freeId == 0)
+      {
+        message = "Restore failed: no free slot left on the sensor.";
+        ok = false;
+        break;
+      }
+      id = freeId;
+    }
+
     bool written = fingerManager.writeTemplate(id, buffer, length);
     if (!written)
       written = fingerManager.writeTemplate(id, buffer, length); // one retry
@@ -208,6 +253,8 @@ bool BackupManager::restoreBackup(FingerprintManager &fingerManager, AccessContr
       ok = false;
       break;
     }
+    if (mode == RestoreMode::addToFree)
+      occupied[id] = true;
     fingerManager.setFingerName(id, String(name));
     FingerSchedule schedule;
     schedule.days = days;

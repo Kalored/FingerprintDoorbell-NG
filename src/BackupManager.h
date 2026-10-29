@@ -14,6 +14,13 @@
 class BackupManager
 {
 public:
+  enum class RestoreMode : uint8_t
+  {
+    overwrite, // slot numbers from the file, existing fingerprints in those slots are overwritten
+    clearFirst, // delete everything on the sensor first, then slot numbers from the file
+    addToFree   // keep everything on the sensor, every fingerprint of the file goes to the next free slot
+  };
+
   enum class State : uint8_t
   {
     idle,
@@ -26,8 +33,10 @@ public:
   static constexpr const char *RestoreFile = "/restore.fpdb";
 
   // both run in the loop task, because only this task may talk to the sensor
-  bool createBackup(FingerprintManager &fingerManager, AccessControl &accessControl);
-  bool restoreBackup(FingerprintManager &fingerManager, AccessControl &accessControl, bool clearFirst);
+  // singleId = 0: all fingerprints, otherwise only the fingerprint in this slot
+  bool createBackup(FingerprintManager &fingerManager, AccessControl &accessControl, uint16_t singleId = 0);
+  bool restoreBackup(FingerprintManager &fingerManager, AccessControl &accessControl, RestoreMode mode);
+  uint16_t getExportedId() { return exportedId; } // slot of the last single export, 0 = full backup
 
   String getStatusJson();
   State getState() { return state; }
@@ -39,6 +48,7 @@ private:
   volatile int progress = 0;
   volatile int total = 0;
   String message;
+  uint16_t exportedId = 0;
   void finish(State newState, const String &newMessage);
 };
 

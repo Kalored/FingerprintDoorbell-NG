@@ -44,7 +44,7 @@
 
 > [!NOTE]
 > Fork of [geronet1/FingerprintDoorbell](https://github.com/geronet1/FingerprintDoorbell), originally by [frickelzeugs](https://github.com/frickelzeugs/FingerprintDoorbell).
-> **New in 0.11.1:** backup download fixed (Chrome rejected it), see the [changelog](#-changelog).
+> **New in 0.12.0:** export and import of single fingerprints, see the [changelog](#-changelog).
 
 ## 💡 How it works
 An ESP32 drives a Grow R503 fingerprint sensor next to your door:
@@ -171,7 +171,7 @@ The menu has four pages. The traffic light next to the device name shows the sta
 
 - **Manage fingerprints**: rename or delete fingers, set **access times** of the selected finger (always, only on certain weekdays/times, or disabled). Outside the allowed times the finger is rejected and `accessDenied` is published instead of a match.
 - **Add/Replace fingerprint**: choose a memory slot (1-200, also used as ID in MQTT) and an optional name, then "Start enrollment". Place and lift your finger 5 times; the status box at the top tells you what to do. Don't vary the position too much, otherwise the 5 scans cannot be combined.
-- **Backup & restore**: downloads all fingerprints (sensor templates), names and access times as a file and restores them, also onto a new sensor. Keep the file safe, it contains your fingerprint data.
+- **Backup & restore**: downloads all fingerprints (sensor templates), names and access times as a file and restores them, also onto a new sensor. A single fingerprint can be exported with the "Export" button of the fingerprint list; importing it adds it to the next free slot ("Add to free slots"), so nothing on the sensor is overwritten. Keep the files safe, they contain your fingerprint data.
 - **Sensor**: sensor state, reconnect, LED ring and touch ring switches, "Pair a new sensor" and "Delete all fingerprints".
 
 ### Settings
@@ -384,5 +384,14 @@ Other changes:
 
 </details>
 
-### 0.11.1 · Backup download fixed (latest)
+<details>
+<summary><b>0.11.1</b> · Backup download fixed</summary>
+
 - **Backup download** (`/backup/download`) failed in Chrome with `ERR_RESPONSE_HEADERS_MULTIPLE_CONTENT_DISPOSITION`: the file response of the web server library already sends a `Content-Disposition` header and the handler added a second one. The file is now streamed through a callback, so the header is sent exactly once and the file name `fingerprints-<hostname>-<date>.fpdb` is kept.
+
+</details>
+
+### 0.12.0 · Export and import of single fingerprints (latest)
+- **Export** button in the fingerprint list: saves only the selected fingerprint (template, name and access times) as `finger-<slot>-<hostname>-<date>.fpdb`.
+- **Add to free slots** option when restoring: every fingerprint of the file goes to the next free slot, existing fingerprints are kept and never overwritten. The option is ticked automatically for files named `finger-...`. If the sensor has no free slot left, the restore stops with an error. This also works with full backups, e.g. to merge fingerprints of two devices.
+- Same file format as the full backup, so single files and full backups can be restored with the same form. Needs firmware and file system image (`spiffs.bin`).

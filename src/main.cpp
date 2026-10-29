@@ -28,7 +28,7 @@ enum class Mode
   restore
 };
 
-const char *VersionInfo = "0.11.1";
+const char *VersionInfo = "0.12.0";
 
 // ===================================================================================================================
 // Caution: below are not the credentials for connecting to your home network, they are for the Access Point mode!!!
@@ -78,7 +78,8 @@ EventLog eventLog;
 AccessControl accessControl;
 BackupManager backupManager;
 bool needMaintenanceMode = false;
-bool restoreClearFirst = false;
+BackupManager::RestoreMode restoreMode = BackupManager::RestoreMode::overwrite;
+volatile uint16_t backupSingleId = 0; // 0 = all fingerprints, set by the web server together with backupRequested
 volatile bool backupRequested = false;  // set by the web server, executed by the loop task
 volatile bool restoreRequested = false;
 volatile bool clearEventsRequested = false;
@@ -1578,6 +1579,13 @@ void startWebserver()
         request->send(409, "application/json", "{\"state\":\"error\",\"message\":\"Device is busy, try again later.\"}");
         return;
       }
+      long singleId = request->hasArg("id") ? request->arg("id").toInt() : 0;
+      if (singleId < 0 || singleId > 200)
+      {
+        request->send(400, "application/json", "{\"state\":\"error\",\"message\":\"Invalid slot number.\"}");
+        return;
+      }
+      backupSingleId = (uint16_t)singleId;
       backupManager.setRunning("Waiting for the sensor...");
       backupRequested = true;
       request->send(200, "application/json", backupManager.getStatusJson()); });
@@ -1597,7 +1605,9 @@ void startWebserver()
         request->send(404, "text/plain", "No backup available, please create one first.");
         return;
       }
-      String fileName = "fingerprints-" + settingsManager.getWifiSettings().hostname;
+      String fileName = backupManager.getExportedId() > 0
+                            ? "finger-" + String(backupManager.getExportedId()) + "-" + settingsManager.getWifiSettings().hostname
+                            : "fingerprints-" + settingsManager.getWifiSettings().hostname;
       time_t now = time(nullptr);
       if (now > 1600000000)
       {
@@ -1648,7 +1658,12 @@ void startWebserver()
             request->send(400, "application/json", "{\"state\":\"error\",\"message\":\"Upload failed or file is empty.\"}");
             return;
           }
-          restoreClearFirst = request->hasArg("clearFirst");
+          if (request->hasArg("clearFirst"))
+            restoreMode = BackupManager::RestoreMode::clearFirst;
+          else if (request->hasArg("addToFree"))
+            restoreMode = BackupManager::RestoreMode::addToFree;
+          else
+            restoreMode = BackupManager::RestoreMode::overwrite;
           backupManager.setRunning("Waiting for the sensor...");
           restoreRequested = true;
           request->send(200, "application/json", backupManager.getStatusJson());
@@ -3035,7 +3050,7 @@ void loop()
     break;
 
   case Mode::backup:
-    if (backupManager.createBackup(fingerManager, accessControl))
+    if (backupManager.createBackup(fingerManager, accessControl, backupSingleId))
       logEvent(EventType::backup, 0, 0, String(backupManager.getProgress()) + " fingerprints");
     fingerManager.setLedRingReady();
     currentMode = Mode::scan;
@@ -3043,7 +3058,7 @@ void loop()
 
   case Mode::restore:
   {
-    bool ok = backupManager.restoreBackup(fingerManager, accessControl, restoreClearFirst);
+    bool ok = backupManager.restoreBackup(fingerManager, accessControl, restoreMode);
     logEvent(EventType::restore, 0, 0, ok ? String(backupManager.getProgress()) + " fingerprints" : String("failed"));
     updateClientsFingerlist(getFingerListHtml());
     fingerManager.setLedRingReady();
