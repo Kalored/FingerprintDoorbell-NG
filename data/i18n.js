@@ -63,10 +63,10 @@
     'Overwrite same slots': 'Gleiche Plätze überschreiben',
     'Add to free slots': 'In freie Plätze einfügen',
     'Delete all first': 'Vorher alles löschen',
-    '"Ignore touch ring" scans without the ring signal and is reset by a restart. More details under Settings, LED ring.': '"Touch-Ring ignorieren" scannt ohne das Ringsignal und wird durch einen Neustart zurückgesetzt. Mehr dazu unter Einstellungen, LED-Ring.',
+    '"Ignore touch ring" scans without the ring signal and stays set after a restart. More details under Settings, LED ring.': '"Touch-Ring ignorieren" scannt ohne das Ringsignal und bleibt auch nach einem Neustart eingeschaltet. Mehr dazu unter Einstellungen, LED-Ring.',
     'General': 'Allgemein',
     'GPIO pins': 'GPIO-Pins',
-    'Touch the ring: it should change to "touched". If it never does, the wake-up wire or the touch power (3.3V touch) of the sensor is not connected. "Ignore touch ring" scans without that signal and is reset by a restart. The view shows how the ring should look, it does not read the real light of the sensor.': 'Berühre den Ring: Die Anzeige sollte auf "berührt" wechseln. Wenn nicht, ist die Wake-up-Leitung oder die Touch-Versorgung (3,3V Touch) des Sensors nicht angeschlossen. "Touch-Ring ignorieren" scannt ohne dieses Signal und wird durch einen Neustart zurückgesetzt. Die Anzeige zeigt, wie der Ring aussehen sollte, sie liest nicht das echte Licht des Sensors aus.',
+    'Touch the ring: it should change to "touched". If it never does, the wake-up wire or the touch power (3.3V touch) of the sensor is not connected. "Ignore touch ring" scans without that signal and stays set after a restart. The view shows how the ring should look, it does not read the real light of the sensor.': 'Berühre den Ring: Die Anzeige sollte auf "berührt" wechseln. Wenn nicht, ist die Wake-up-Leitung oder die Touch-Versorgung (3,3V Touch) des Sensors nicht angeschlossen. "Touch-Ring ignorieren" scannt ohne dieses Signal und bleibt auch nach einem Neustart eingeschaltet. Die Anzeige zeigt, wie der Ring aussehen sollte, sie liest nicht das echte Licht des Sensors aus.',
     'Only the idle light is switched off, while scanning the ring still shows its colors. Needs a working time (NTP).': 'Nur das Ruhelicht wird ausgeschaltet, beim Scannen zeigt der Ring weiter seine Farben. Braucht eine funktionierende Uhrzeit (NTP).',
     'For a presence radar like the HLK-LD2410: VCC to 5V, GND to GND, OUT to the GPIO below. Presence is published to MQTT ("presence") and Home Assistant.': 'Für ein Anwesenheitsradar wie den HLK-LD2410: VCC an 5V, GND an GND, OUT an den GPIO unten. Die Anwesenheit wird per MQTT ("presence") und an Home Assistant gemeldet.',
     'New pins are used after a restart.': 'Neue Pins werden nach einem Neustart verwendet.',
@@ -88,8 +88,8 @@
     'LED ring on': 'LED-Ring an',
     'Ignore touch ring': 'Touch-Ring ignorieren',
     'Touch ring pin (GPIO 5):': 'Touch-Ring-Pin (GPIO 5):',
-    '. "Ignore touch ring" scans without the ring signal and is reset by a restart. More details under Settings, LED ring.':
-      '. "Touch-Ring ignorieren" scannt ohne das Signal des Rings und wird bei einem Neustart zurückgesetzt. Mehr Details unter Einstellungen, LED-Ring.',
+    '. "Ignore touch ring" scans without the ring signal and stays set after a restart. More details under Settings, LED ring.':
+      '. "Touch-Ring ignorieren" scannt ohne das Signal des Rings und bleibt auch nach einem Neustart eingeschaltet. Mehr Details unter Einstellungen, LED-Ring.',
     'Pairing': 'Kopplung',
     'Pair a new sensor': 'Neuen Sensor koppeln',
     'Needed after replacing the sensor. The sensor only accepts this device afterwards.': 'Nötig nach einem Sensortausch. Danach akzeptiert der Sensor nur noch dieses Gerät.',
@@ -136,8 +136,8 @@
     '(second column).': '(zweite Spalte).',
     'LED ring & night mode': 'LED-Ring & Nachtmodus',
     'Ring live view': 'Ring-Liveansicht',
-    '. Touch the ring: it should change to "touched". If it never does, the wake-up wire or the touch power (3.3V touch) of the sensor is not connected. "Ignore touch ring" scans without that signal and is reset by a restart. The view shows how the ring should look, it does not read the real light of the sensor.':
-      '. Berühre den Ring: Es sollte auf "berührt" wechseln. Passiert das nie, ist die Wake-up-Leitung oder die Touch-Versorgung (3,3V Touch) des Sensors nicht angeschlossen. "Touch-Ring ignorieren" scannt ohne dieses Signal und wird bei einem Neustart zurückgesetzt. Die Ansicht zeigt, wie der Ring leuchten sollte, sie liest nicht das echte Licht des Sensors aus.',
+    '. Touch the ring: it should change to "touched". If it never does, the wake-up wire or the touch power (3.3V touch) of the sensor is not connected. "Ignore touch ring" scans without that signal and stays set after a restart. The view shows how the ring should look, it does not read the real light of the sensor.':
+      '. Berühre den Ring: Es sollte auf "berührt" wechseln. Passiert das nie, ist die Wake-up-Leitung oder die Touch-Versorgung (3,3V Touch) des Sensors nicht angeschlossen. "Touch-Ring ignorieren" scannt ohne dieses Signal und bleibt auch nach einem Neustart eingeschaltet. Die Ansicht zeigt, wie der Ring leuchten sollte, sie liest nicht das echte Licht des Sensors aus.',
     'Touch Ring Active: LED Color': 'Touch-Ring bereit: LED-Farbe',
     'Touch Ring Active: LED Sequence': 'Touch-Ring bereit: LED-Muster',
     'Scan fingerprint: LED Color': 'Fingerabdruck scannen: LED-Farbe',

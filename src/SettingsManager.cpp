@@ -58,6 +58,7 @@ bool SettingsManager::loadAppSettings()
         appSettings.radarActiveHigh = preferences.getBool("radarHigh", true);
         appSettings.radarLedWake = preferences.getBool("radarWake", false);
         appSettings.language = preferences.getString("lang", String("en"));
+        appSettings.ignoreTouchRing = preferences.getBool("ignoreRing", false);
         appSettings.pins.sensorRx = preferences.getChar("pinRx", 16);
         appSettings.pins.sensorTx = preferences.getChar("pinTx", 17);
         appSettings.pins.touchRing = preferences.getChar("pinTouch", 5);
@@ -131,6 +132,7 @@ void SettingsManager::saveAppSettings()
     preferences.putBool("radarHigh", appSettings.radarActiveHigh);
     preferences.putBool("radarWake", appSettings.radarLedWake);
     preferences.putString("lang", appSettings.language);
+    preferences.putBool("ignoreRing", appSettings.ignoreTouchRing);
     preferences.putChar("pinRx", appSettings.pins.sensorRx);
     preferences.putChar("pinTx", appSettings.pins.sensorTx);
     preferences.putChar("pinTouch", appSettings.pins.touchRing);

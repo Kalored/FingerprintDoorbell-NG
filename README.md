@@ -44,7 +44,7 @@
 
 > [!NOTE]
 > Fork of [geronet1/FingerprintDoorbell](https://github.com/geronet1/FingerprintDoorbell), originally by [frickelzeugs](https://github.com/frickelzeugs/FingerprintDoorbell).
-> **New in 0.13.0:** new web interface (cards, tabs, light and dark mode), see the [changelog](#-changelog).
+> **New in 0.13.1:** "Ignore touch ring" is kept after a restart. 0.13.0 brought the new web interface (cards, tabs, light and dark mode), see the [changelog](#-changelog).
 
 ## 💡 How it works
 An ESP32 drives a Grow R503 fingerprint sensor next to your door:
@@ -253,7 +253,7 @@ Idle, scan and match colors can be changed in the settings; the table shows the 
 ## What is "Ignore touch ring" for?
 The sensor surface only recognizes a finger if most of it lies on the sensor long enough. Visitors who just want to ring often only touch it briefly, so the doorbell also uses the touch signal of the metal ring around the sensor (GPIO 5), which reacts to the slightest touch. This ring is capacitive and, like a smartphone display, rain drops can trigger it: horizontal rain during a storm can ring your doorbell at 3 AM.
 
-Setting `ignoreTouchRing` to `on` (MQTT, Home Assistant switch, or the Sensor section of the Fingerprints page) ignores the ring signal; only a finger on the sensor surface counts then. Let your home automation switch it on when it is raining and windy. The setting is reset by a restart.
+Setting `ignoreTouchRing` to `on` (MQTT, Home Assistant switch, or the Sensor section of the Fingerprints page) ignores the ring signal; only a finger on the sensor surface counts then. Let your home automation switch it on when it is raining and windy. The setting is saved on the device and stays after a restart. If the wake-up wire of the touch ring is not connected at all, switch it on once and leave it on.
 
 ## Troubleshooting
 - **Sensor not found**: check power and TX/RX (crossed: sensor TX to ESP32 RX). The device keeps running and retries for 3 minutes; afterwards use "Reconnect sensor". The serial monitor on the Log page shows what happens at startup. If you changed the GPIO pins, set the defaults again.
@@ -403,10 +403,17 @@ Other changes:
 
 </details>
 
-### 0.13.0 · New web interface (latest)
+<details>
+<summary><b>0.13.0</b> · New web interface</summary>
+
 - **New look** for all pages: cards, one accent color, outline buttons, rounded fields. Works on phones, and in light and dark mode.
 - **Light / dark switch** next to the language switch in the top bar. Without a choice the browser setting is used; the choice is only remembered by the browser you use (nothing is saved on the device).
 - **Fingerprints page**: list and details side by side. The selected finger shows name, slot, Rename / Export / Delete and its access times right away (no separate "Access times" section). "Add / replace" is a slim bar at the top of the same card. Backup & restore are two compact boxes; the two restore check boxes became one selection (overwrite same slots / add to free slots / delete all first).
 - **Settings page** as tabs (General, LED ring & night mode, Security, Radar sensor, GPIO pins, Maintenance) with one Save button for all of them.
 - **Less text**: help texts moved into info icons ("i") that show the text on hover or tap.
 - The look is in the new file `data/style.css` (cached by the browser, the firmware serves it at `/style.css`). Needs firmware and file system image (`spiffs.bin`). Without the new file system the pages keep the old plain look.
+
+</details>
+
+### 0.13.1 · "Ignore touch ring" is kept after a restart (latest)
+- **"Ignore touch ring"** is now saved on the device, no matter whether it is switched in the web interface, over MQTT or in Home Assistant. Before, every restart switched it off again. Without a connected wake-up wire of the touch ring the doorbell then waited for a touch signal that never came, so no finger was scanned until the switch was set again.

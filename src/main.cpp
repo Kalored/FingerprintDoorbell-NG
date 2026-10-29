@@ -28,7 +28,7 @@ enum class Mode
   restore
 };
 
-const char *VersionInfo = "0.13.0";
+const char *VersionInfo = "0.13.1";
 
 // ===================================================================================================================
 // Caution: below are not the credentials for connecting to your home network, they are for the Access Point mode!!!
@@ -215,6 +215,7 @@ String getGpioOptionsHtml(PinRole role);
 String getGpioNoteHtml();
 String getRadarPinOptionsHtml();
 void updateLedSuppression();
+void setIgnoreTouchRing(bool state);
 void setupRadarPin();
 void applyTimeSettings();
 void initMqtt();
@@ -2071,6 +2072,19 @@ void publishFeatureStates()
 }
 
 // LED ring idle state depends on night mode and radar presence
+// "Ignore touch ring" (MQTT, Home Assistant, web UI) is saved, so it is still set after a restart,
+// e.g. if the wake-up wire of the touch ring is not connected at all
+void setIgnoreTouchRing(bool state)
+{
+  fingerManager.setIgnoreTouchRing(state);
+  if (settingsManager.getAppSettings().ignoreTouchRing != state)
+  {
+    AppSettings settings = settingsManager.getAppSettings();
+    settings.ignoreTouchRing = state;
+    settingsManager.saveAppSettings(settings);
+  }
+}
+
 void updateLedSuppression()
 {
   const AppSettings &settings = settingsManager.getAppSettings();
@@ -2343,11 +2357,11 @@ void mqttCallback(char *topic, byte *message, unsigned int length)
   {
     if (isOnPayload(messageTemp))
     {
-      fingerManager.setIgnoreTouchRing(true);
+      setIgnoreTouchRing(true);
     }
     else if (isOffPayload(messageTemp))
     {
-      fingerManager.setIgnoreTouchRing(false);
+      setIgnoreTouchRing(false);
     }
     publishSwitchStates();
   }
@@ -2858,6 +2872,7 @@ void setup()
   accessControl.loadSchedules();
   setupRadarPin();
 
+  fingerManager.setIgnoreTouchRing(settingsManager.getAppSettings().ignoreTouchRing); // before connect(), so the ring shows the right idle light
   fingerManager.connect();
   sensorStateSinceMillis = millis();
   sensorAutoRetryActive = !fingerManager.connected;
@@ -3003,7 +3018,7 @@ void loop()
       ignoreRingRequest = -1;
       ledRingRequest = -1;
       if (ignoreValue >= 0)
-        fingerManager.setIgnoreTouchRing(ignoreValue == 1);
+        setIgnoreTouchRing(ignoreValue == 1);
       if (ledValue >= 0)
         fingerManager.setLedRingEnabled(ledValue == 1);
       if (ignoreValue >= 0 && fingerManager.connected)
