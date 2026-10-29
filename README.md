@@ -44,7 +44,7 @@
 
 > [!NOTE]
 > Fork of [geronet1/FingerprintDoorbell](https://github.com/geronet1/FingerprintDoorbell), originally by [frickelzeugs](https://github.com/frickelzeugs/FingerprintDoorbell).
-> **New in 0.11.0:** web interface in English and German, see the [changelog](#-changelog).
+> **New in 0.11.1:** backup download fixed (Chrome rejected it), see the [changelog](#-changelog).
 
 ## 💡 How it works
 An ESP32 drives a Grow R503 fingerprint sensor next to your door:
@@ -374,8 +374,15 @@ Other changes:
 
 </details>
 
-### 0.11.0 · Web interface in English and German (latest)
+<details>
+<summary><b>0.11.0</b> · Web interface in English and German</summary>
+
 - **Language switch** "EN | DE" on the right of the top bar of every page (and on the WiFi setup page). The language is saved on the device, so it applies to every browser.
 - Translated: all labels, buttons, help texts and confirmations, plus the texts created by the device (sensor state, event history, lockout, night mode and radar state, MQTT state, backup/restore messages, GPIO notes, weekdays of the access times).
 - Stays English: system log, serial monitor and enrollment status (they show the log messages, which are also published as `lastLogMessage`), MQTT topics and payloads, Home Assistant entity names.
 - The translations are in `data/i18n.js`, loaded once per firmware version and cached by the browser. Without the new file system image the web interface simply stays English.
+
+</details>
+
+### 0.11.1 · Backup download fixed (latest)
+- **Backup download** (`/backup/download`) failed in Chrome with `ERR_RESPONSE_HEADERS_MULTIPLE_CONTENT_DISPOSITION`: the file response of the web server library already sends a `Content-Disposition` header and the handler added a second one. The file is now streamed through a callback, so the header is sent exactly once and the file name `fingerprints-<hostname>-<date>.fpdb` is kept.

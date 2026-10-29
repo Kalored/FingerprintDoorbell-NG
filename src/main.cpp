@@ -28,7 +28,7 @@ enum class Mode
   restore
 };
 
-const char *VersionInfo = "0.11.0";
+const char *VersionInfo = "0.11.1";
 
 // ===================================================================================================================
 // Caution: below are not the credentials for connecting to your home network, they are for the Access Point mode!!!
@@ -1608,7 +1608,23 @@ void startWebserver()
         fileName += buffer;
       }
       fileName += ".fpdb";
-      AsyncWebServerResponse *response = request->beginResponse(SPIFFS, BackupManager::BackupFile, "application/octet-stream");
+      // Stream the file through a callback: the SPIFFS file response of the library adds its own
+      // Content-Disposition header, a second one makes Chrome reject the download
+      // (ERR_RESPONSE_HEADERS_MULTIPLE_CONTENT_DISPOSITION).
+      File backupFile = SPIFFS.open(BackupManager::BackupFile, "r");
+      if (!backupFile)
+      {
+        request->send(500, "text/plain", "Backup file could not be opened.");
+        return;
+      }
+      AsyncWebServerResponse *response = request->beginResponse(
+          "application/octet-stream", backupFile.size(),
+          [backupFile](uint8_t *buffer, size_t maxLen, size_t index) mutable -> size_t
+          {
+            if (backupFile.position() != index)
+              backupFile.seek(index);
+            return backupFile.read(buffer, maxLen);
+          });
       response->addHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
       request->send(response); });
 
