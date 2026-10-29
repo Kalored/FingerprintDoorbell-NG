@@ -68,7 +68,7 @@
 					firstMessage = false;
 					try { show = sessionStorage.getItem('showStatus') === '1'; sessionStorage.removeItem('showStatus'); } catch (err) {}
 				}
-				if (!show) return;
+				if (!show || backupJobActive) return;
 				var box = document.getElementById('statusBox');
 				box.innerHTML = e.data;
 				box.style.display = '';
@@ -159,6 +159,12 @@
 		}
 
 		// backup / restore: the sensor work is done by the device in the background, so poll the status
+		// while a backup/export/restore runs its progress is shown next to the buttons, not in the status box at the top
+		var backupJobActive = false;
+		var backupJobTimer = null;
+		function startBackupJob() { clearTimeout(backupJobTimer); backupJobActive = true; backupJobTimer = setTimeout(function () { backupJobActive = false; }, 120000); }
+		function endBackupJob() { clearTimeout(backupJobTimer); backupJobTimer = setTimeout(function () { backupJobActive = false; }, 3000); }
+
 		function setBackupStatus(text, isError)
 		{
 			var ids = ['backupStatus', 'exportStatus'];
@@ -178,6 +184,7 @@
 					setTimeout(function () { pollBackupStatus(onDone); }, 1000);
 				} else {
 					setBackupStatus(status.message, status.state === 'error');
+					endBackupJob();
 					document.getElementById('btnCreateBackup').disabled = false;
 					document.getElementById('btnRestore').disabled = false;
 					if (status.state === 'done' && onDone) onDone();
@@ -187,6 +194,7 @@
 
 		function createBackup()
 		{
+			startBackupJob();
 			document.getElementById('btnCreateBackup').disabled = true;
 			setBackupStatus('Starting backup...', false);
 			fetch('/backup/create', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (status) {
@@ -207,6 +215,7 @@
 				setBackupStatus(t('No fingerprint selected.'), true);
 				return;
 			}
+			startBackupJob();
 			document.getElementById('btnExport').disabled = true;
 			setBackupStatus(t('Starting backup...'), false);
 			fetch('/backup/create?id=' + encodeURIComponent(option.value), { method: 'POST' }).then(function (r) { return r.json(); }).then(function (status) {
@@ -257,6 +266,7 @@
 			if (clearFirst) data.append('clearFirst', 'on');
 			else if (addToFree) data.append('addToFree', 'on');
 			data.append('file', fileInput.files[0]);
+			startBackupJob();
 			document.getElementById('btnRestore').disabled = true;
 			setBackupStatus('Uploading...', false);
 			fetch('/backup/restore', { method: 'POST', body: data }).then(function (r) { return r.json(); }).then(function (status) {

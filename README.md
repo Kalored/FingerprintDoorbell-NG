@@ -395,3 +395,4 @@ Other changes:
 - **Export** button in the fingerprint list: saves only the selected fingerprint (template, name and access times) as `finger-<slot>-<hostname>-<date>.fpdb`.
 - **Add to free slots** option when restoring: every fingerprint of the file goes to the next free slot, existing fingerprints are kept and never overwritten. The option is ticked automatically for files named `finger-...`. If the sensor has no free slot left, the restore stops with an error. This also works with full backups, e.g. to merge fingerprints of two devices.
 - Same file format as the full backup, so single files and full backups can be restored with the same form. Needs firmware and file system image (`spiffs.bin`).
+- While a backup, export or restore runs, its progress is only shown next to the buttons. The status box at the top of the page no longer pops up and pushes the page down.
