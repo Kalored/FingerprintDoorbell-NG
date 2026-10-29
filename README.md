@@ -165,21 +165,22 @@ Enter SSID, password and host name and save. The device restarts and connects to
 The device never goes back to configuration mode on its own, even if the WiFi is unavailable; it keeps trying to connect. To enter configuration mode again, keep your finger on the sensor while powering up the device.
 
 ## Web interface
-The menu has four pages. The traffic light next to the device name shows the state of the fingerprint sensor on every page (green ok, yellow does not answer / reconnecting, red not connected). **EN | DE** on the right switches the language of the web interface between English and German.
+The menu has four pages. The traffic light next to the device name shows the state of the fingerprint sensor on every page (green ok, yellow does not answer / reconnecting, red not connected). On the right, **EN | DE** switches the language between English and German and the moon/sun icon switches between light and dark mode. Help texts are behind the small info icons ("i").
 
 ### Fingerprints
+<img src="doc/images/web-fingerprints.png" width="600">
 
-- **Manage fingerprints**: rename or delete fingers, set **access times** of the selected finger (always, only on certain weekdays/times, or disabled). Outside the allowed times the finger is rejected and `accessDenied` is published instead of a match.
-- **Add/Replace fingerprint**: choose a memory slot (1-200, also used as ID in MQTT) and an optional name, then "Start enrollment". Place and lift your finger 5 times; the status box at the top tells you what to do. Don't vary the position too much, otherwise the 5 scans cannot be combined.
-- **Backup & restore**: downloads all fingerprints (sensor templates), names and access times as a file and restores them, also onto a new sensor. A single fingerprint can be exported with the "Export" button of the fingerprint list; importing it adds it to the next free slot ("Add to free slots"), so nothing on the sensor is overwritten. Keep the files safe, they contain your fingerprint data.
+- **List and details side by side**: select a finger to rename, export or delete it and to set its **access times** (always, only on certain weekdays/times, or disabled). Outside the allowed times the finger is rejected and `accessDenied` is published instead of a match.
+- **Add / replace** (bar at the top): choose a memory slot (1-200, also used as ID in MQTT) and an optional name, then "Start enrollment". Place and lift your finger 5 times; the status box at the top tells you what to do. Don't vary the position too much, otherwise the 5 scans cannot be combined.
+- **Backup & restore**: downloads all fingerprints (sensor templates), names and access times as a file and restores them, also onto a new sensor. When restoring, choose whether the same slots are overwritten, the fingerprints are added to free slots, or everything is deleted first. A single fingerprint exported with "Export" goes to the next free slot, so nothing on the sensor is overwritten. Keep the files safe, they contain your fingerprint data.
 - **Sensor**: sensor state, reconnect, LED ring and touch ring switches, "Pair a new sensor" and "Delete all fingerprints".
 
 ### Settings
-<img src="doc/images/web-settings.png" width="500">
+<img src="doc/images/web-settings.png" width="600">
 
-Web password (user name "admin"), NTP server and time zone, and in collapsible sections: LED ring colors and night mode (with a live view of the ring and the touch ring pin), security (failed attempts, lockout time, ring cooldown), radar sensor and GPIO pins. Saving does not restart the device, except new GPIO pins, which are used after a restart. "Maintenance" holds the firmware update and the factory reset.
+Tabs with one Save button for all of them: **General** (web password, user name "admin", NTP server, time zone), **LED ring & night mode** (colors, night mode, live view of the ring and the touch ring pin), **Security** (failed attempts, lockout time, ring cooldown), **Radar sensor**, **GPIO pins** and **Maintenance** (firmware update, factory reset). Saving does not restart the device, except new GPIO pins, which are used after a restart.
 
-### 📡 MQTT
+### MQTT
 <img src="doc/images/web-mqtt.png" width="600">
 
 Connection state, broker settings, root topic, Home Assistant discovery and enrollment over MQTT. Under "Advanced options": client ID, keepalive, on/off payloads (e.g. `true`/`false` for ioBroker), retain and log publishing. Under "Topic names": every sub topic.
@@ -188,10 +189,11 @@ Connection state, broker settings, root topic, Home Assistant discovery and enro
 > **The client ID must be unique on your broker.** Two devices with the same client ID kick each other off the broker every few seconds.
 
 ### Log
+<img src="doc/images/web-log.png" width="600">
 
 Large sensor state with reconnect button, event history (last 30 events, kept after a restart), lockout state, live system log, a serial monitor (everything the firmware writes to the serial port, no USB cable needed) and network/device information (IP, WiFi, RSSI, connection losses, MQTT, chip, memory, reset reason).
 
-# MQTT
+# 📡 MQTT
 The root topic (default `fingerprintDoorbell`), all sub topics below and the on/off payloads can be changed on the MQTT page. Defaults:
 
 | Topic | Direction | Values |
