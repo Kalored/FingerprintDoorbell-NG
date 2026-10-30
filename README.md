@@ -154,6 +154,15 @@ Settings, "Maintenance", "Open update page": upload `firmware.bin` as "Firmware"
 > [!TIP]
 > Always update both files, the web pages belong to the firmware version.
 
+### Updating from the MaskedDeveloper version via ElegantOTA
+If the device still runs the MaskedDeveloper version, its update page ("Elegant OTA") is used for the first update. The order matters:
+
+1. Upload `firmware.bin` **first** (mode "Firmware") and nothing else.
+2. Wait. The device can need about 15 minutes until it comes back; do not unplug it and do not upload the second file before it answers again.
+3. Then upload `spiffs.bin` (mode "Filesystem").
+
+Choose the right mode for each file, `firmware.bin` as "Firmware" and `spiffs.bin` as "Filesystem". If the device does not come back at all, flash all five files over USB as described above (with "Erase Flash"). After this first update the new update page under `/update` is used.
+
 # 🧰 Configuration
 ## WiFi
 Without WiFi settings (first start, after a factory reset) the device starts in WiFi configuration mode (LED ring breathing red) and opens its own access point **"FingerprintDoorbell-Config"**, password **"12345678"**. Connect to it; the configuration page opens as a captive portal, otherwise browse to http://192.168.4.1.
